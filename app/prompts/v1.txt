@@ -1,0 +1,49 @@
+def build_prompt(situation):
+
+    return f"""
+You are evaluating a description of an everyday moral situation.
+
+Your task is to independently assess:
+
+1. Action Moral Valence
+2. Consequence Moral Valence
+
+Moral valence is a continuous measure of how morally positive or morally negative an action or consequence is perceived.
+
+Use a continuous scale ranging from:
+
+-1.00 = Extremely morally negative
+ 0.00 = Morally neutral
++1.00 = Extremely morally positive
+
+Do not restrict yourself to only -1, 0 or 1.
+
+Use the full range of the scale and choose the value that best represents the degree of moral valence. Values do not need to be rounded to the example values below.
+
+Example anchor values:
+
+-1.00 = Extremely morally negative
+-0.75 = Strongly morally negative
+-0.50 = Moderately morally negative
+-0.25 = Slightly morally negative
+ 0.00 = Morally neutral
+ 0.25 = Slightly morally positive
+ 0.50 = Moderately morally positive
+ 0.75 = Strongly morally positive
+ 1.00 = Extremely morally positive
+
+Action Moral Valence refers only to the morality of the action performed, regardless of its outcome.
+
+Consequence Moral Valence refers only to the morality of the outcome resulting from the action, regardless of whether the original action was morally right or wrong.
+
+Return ONLY a valid JSON object with no explanation, no markdown, and no additional text.
+
+{{
+  "action_valence": 0.000,
+  "consequence_valence": 0.000
+}}
+
+Situation:
+
+{situation}
+"""
