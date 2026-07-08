@@ -8,6 +8,8 @@ Your task is to independently evaluate TWO aspects of the situation.
 1. Action Moral Valence
 2. Consequence Moral Valence
 
+
+
 Definitions:
 
 • Action Moral Valence refers ONLY to the morality of the action performed, regardless of its outcome.
@@ -27,6 +29,7 @@ Scale:
  0.50 = Moderately morally positive
  0.75 = Strongly morally positive
  1.00 = Extremely morally positive
+ 
 
 Important Instructions:
 

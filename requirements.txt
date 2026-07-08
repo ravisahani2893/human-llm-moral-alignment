@@ -3,3 +3,5 @@ python-dotenv
 pandas
 typing_extensions
 mcp
+openai
+logging

@@ -1,6 +1,7 @@
 from mcp.server.fastmcp import FastMCP
 from app.prompts import build_prompt
-from app.gemini_client import ask_gemini
+from clients.gemini_client import ask_gemini
+from clients.openai_client import ask_gpt
 from app.models import MoralValenceResponse
 import json
 
@@ -13,14 +14,26 @@ from app.evaluator import (
 mcp = FastMCP("Human LLM Moral Alignment")
 
 @mcp.tool()
-def evaluate_moral_scenario(scenario: str) -> MoralValenceResponse:
-    """
-    Evaluate Action and Consequence Moral Valence.
-    """
-    print(f"Evaluating scenario: {scenario}")
+def evaluate_moral_scenario(
+    scenario: str,
+    model: str = "gemini"
+):
+    print("=" * 50)
+    print(f"Model parameter received: {model}")
+    print("=" * 50)
+
     prompt = build_prompt(scenario)
 
-    response = ask_gemini(prompt)
+    if model.lower() == "gemini":
+        print(">>> Calling Gemini")
+        response = ask_gemini(prompt)
+
+    elif model.lower() == "gpt":
+        print(">>> Calling GPT")
+        response = ask_gpt(prompt)
+
+    else:
+        raise ValueError(f"Unsupported model: {model}")
 
     prediction= json.loads(response)
     return MoralValenceResponse(
