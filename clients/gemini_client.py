@@ -1,5 +1,6 @@
 from google import genai
 from app.config import GEMINI_API_KEY
+import sys
 import time
 from google.genai.errors import ClientError
 from google import genai
@@ -9,6 +10,7 @@ from google import genai
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def ask_gemini(prompt):
+    print("[gemini_client] calling Gemini with model='gemini-2.5-flash'", file=sys.stderr)
     while True:
         try:
             response = client.models.generate_content(

@@ -5,3 +5,7 @@ typing_extensions
 mcp
 openai
 logging
+pydantic
+fastapi
+uvicorn
+scipy

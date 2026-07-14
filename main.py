@@ -1,7 +1,7 @@
 import pandas as pd
 
 from app.prompts import build_prompt
-from app.gemini_client import ask_gemini
+from clients.gemini_client import ask_gemini
 
 df = pd.read_csv("data/processed/moralalign_dataset.csv")
 

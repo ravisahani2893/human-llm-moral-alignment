@@ -2,7 +2,11 @@ from pydantic import BaseModel
 
 class MoralValenceResponse(BaseModel):
     action_valence: float
+    action_reasoning: str = ""
+    action_factors: list[str] = []
     consequence_valence: float
+    consequence_reasoning: str = ""
+    consequence_factors: list[str] = []
 
 class ModelInformation(BaseModel):
     model: str
