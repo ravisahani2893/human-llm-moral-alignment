@@ -1,4 +1,6 @@
+import json
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -10,7 +12,15 @@ from app.interpret import valence_label
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# In-process cache of jobs this process started. Cross-process visibility
+# (e.g. the web app and the MCP server, which run as separate OS processes)
+# comes from the status JSON file each job writes to disk on every update,
+# not from this dict — see get_job()/list_jobs().
 _jobs: dict[str, "Job"] = {}
+
+
+def _status_path(job_id: str) -> Path:
+    return OUTPUT_DIR / f"job_{job_id}.status.json"
 
 
 class Job:
@@ -20,6 +30,7 @@ class Job:
         self.sample_size = sample_size
         self.status = "running"  # running | completed | error
         self.error = None
+        self.created_at = time.time()
         self.lock = threading.Lock()
         self.rows: dict[int, dict] = {}  # ID -> combined row
         self.total = 0
@@ -37,7 +48,14 @@ class Job:
                 "total": self.total,
                 "completed_per_model": dict(self.completed_per_model),
                 "errors_per_model": dict(self.errors_per_model),
+                "created_at": self.created_at,
+                "csv_path": str(self.csv_path),
             }
+
+    def write_status(self):
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        with open(_status_path(self.id), "w") as f:
+            json.dump(self.snapshot(), f)
 
     def rows_snapshot(self):
         with self.lock:
@@ -70,7 +88,35 @@ class Job:
             if c not in df.columns:
                 df[c] = None
         df = df[cols]
+        OUTPUT_DIR.mkdir(exist_ok=True)
         df.to_csv(self.csv_path, index=False)
+
+
+class JobView:
+    """
+    Read-only view of a job reconstructed from its on-disk status file.
+
+    Job objects live only in the process that started them (in-memory,
+    thread-locked). Any other process — e.g. the web app and the MCP server
+    both talk to the same evaluation engine but run separately — needs this
+    to see a job's status/results by id.
+    """
+
+    def __init__(self, data: dict):
+        self._data = data
+        self.id = data["id"]
+        self.status = data["status"]
+        self.csv_path = Path(data.get("csv_path", OUTPUT_DIR / f"job_{self.id}.csv"))
+
+    def snapshot(self):
+        return dict(self._data)
+
+    def rows_snapshot(self):
+        import pandas as pd
+
+        if not self.csv_path.exists():
+            return []
+        return pd.read_csv(self.csv_path).to_dict(orient="records")
 
 
 def _run_job(job: Job):
@@ -86,6 +132,7 @@ def _run_job(job: Job):
                     "Human_Action": row["Action_Valence"],
                     "Human_Consequence": row["Consequence_Valence"],
                 }
+        job.write_status()
 
         def run_model(model: str):
             label = MODEL_LABELS.get(model, model)
@@ -117,6 +164,7 @@ def _run_job(job: Job):
                     job.completed_per_model[model] += 1
 
                 job.write_csv()
+                job.write_status()
 
         with ThreadPoolExecutor(max_workers=len(job.models)) as pool:
             futures = [pool.submit(run_model, m) for m in job.models]
@@ -128,15 +176,50 @@ def _run_job(job: Job):
     except Exception as exc:
         job.status = "error"
         job.error = str(exc)
+    finally:
+        job.write_status()
 
 
 def start_job(models: list[str], sample_size: int | None = None) -> Job:
     job = Job(models=models, sample_size=sample_size)
     _jobs[job.id] = job
+    job.write_status()
     thread = threading.Thread(target=_run_job, args=(job,), daemon=True)
     thread.start()
     return job
 
 
-def get_job(job_id: str) -> Job | None:
-    return _jobs.get(job_id)
+def get_job(job_id: str) -> Job | JobView | None:
+    if job_id in _jobs:
+        return _jobs[job_id]
+
+    status_path = _status_path(job_id)
+    if status_path.exists():
+        try:
+            with open(status_path) as f:
+                return JobView(json.load(f))
+        except (json.JSONDecodeError, OSError):
+            return None
+    return None
+
+
+def list_jobs() -> list[dict]:
+    """
+    All known jobs, most recent first, regardless of which process started
+    them — reads every status file on disk and overlays this process's live
+    in-memory jobs (fresher than what's been flushed to disk).
+    """
+    snapshots: dict[str, dict] = {}
+
+    for status_path in OUTPUT_DIR.glob("job_*.status.json"):
+        try:
+            with open(status_path) as f:
+                data = json.load(f)
+            snapshots[data["id"]] = data
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    for job_id, job in _jobs.items():
+        snapshots[job_id] = job.snapshot()
+
+    return sorted(snapshots.values(), key=lambda d: d.get("created_at", 0), reverse=True)

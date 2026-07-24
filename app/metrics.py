@@ -2,14 +2,52 @@ import numpy as np
 import pandas as pd
 
 from app.dataset import load_dataset
+from app.models import AlignmentReport, AxisMetrics, ModelMetrics, StratumMetrics
 
 STRATA_COLUMNS = ["pattern", "source", "input_type"]
+
+# Lin's CCC and pairwise CCC figures reported in the source paper ("Can
+# Valence Reflect Morality in Natural Language? A Preliminary Annotation
+# Study", Table II) — the human-annotator baseline this project's model
+# CCC scores are meant to be read against, same metric, same scale.
+PAPER_REFERENCE_CCC = {
+    "action": {"pairwise_human": 0.260, "human_vs_ewe_gold_standard": 0.512},
+    "consequence": {"pairwise_human": 0.356, "human_vs_ewe_gold_standard": 0.609},
+}
 
 
 def _clean_pair(human: pd.Series, predicted: pd.Series) -> pd.DataFrame:
     """Align two series and drop rows where either side is missing."""
     df = pd.DataFrame({"human": human, "predicted": predicted}).dropna()
     return df
+
+
+def concordance_correlation_coefficient(human: pd.Series, predicted: pd.Series) -> float | None:
+    """
+    Lin's Concordance Correlation Coefficient (CCC) — the exact metric the
+    source paper uses (its Eq. 1) to report human-annotator agreement.
+    Unlike Pearson r, CCC penalizes both imprecision (low correlation) AND
+    inaccuracy (a systematic mean/scale shift), so a model that's perfectly
+    correlated with humans but consistently shifted still scores poorly —
+    which is the property that makes it directly comparable to the paper's
+    own reported numbers.
+
+        CCC = 2*cov(a,b) / (var(a) + var(b) + (mean(a) - mean(b))^2)
+    """
+    df = _clean_pair(human, predicted)
+    if len(df) < 2:
+        return None
+
+    mean_h, mean_p = df["human"].mean(), df["predicted"].mean()
+    var_h, var_p = df["human"].var(), df["predicted"].var()
+    covariance = df["human"].cov(df["predicted"])
+
+    denominator = var_h + var_p + (mean_h - mean_p) ** 2
+    if denominator == 0:
+        return None
+
+    ccc = (2 * covariance) / denominator
+    return None if pd.isna(ccc) else round(float(ccc), 4)
 
 
 def axis_metrics(human: pd.Series, predicted: pd.Series) -> dict:
@@ -25,6 +63,7 @@ def axis_metrics(human: pd.Series, predicted: pd.Series) -> dict:
             "n": 0,
             "pearson_r": None,
             "spearman_r": None,
+            "ccc": None,
             "mae": None,
             "rmse": None,
             "sign_agreement": None,
@@ -47,17 +86,19 @@ def axis_metrics(human: pd.Series, predicted: pd.Series) -> dict:
 
     signs_match = (df["human"].apply(sign) == df["predicted"].apply(sign)).mean()
 
-    pearson_r = spearman_r = None
+    pearson_r = spearman_r = ccc = None
     if n >= 2:
         pearson_raw = df["human"].corr(df["predicted"], method="pearson")
         spearman_raw = df["human"].corr(df["predicted"], method="spearman")
         pearson_r = None if pd.isna(pearson_raw) else round(float(pearson_raw), 4)
         spearman_r = None if pd.isna(spearman_raw) else round(float(spearman_raw), 4)
+        ccc = concordance_correlation_coefficient(df["human"], df["predicted"])
 
     return {
         "n": n,
         "pearson_r": pearson_r,
         "spearman_r": spearman_r,
+        "ccc": ccc,
         "mae": round(float(mae), 4),
         "rmse": round(rmse, 4),
         "sign_agreement": round(float(signs_match), 4),
@@ -83,9 +124,11 @@ def model_metrics(df: pd.DataFrame, action_col: str, consequence_col: str,
 
 def cross_model_agreement(df: pd.DataFrame, model_columns: dict) -> dict:
     """
-    Pairwise correlation between models' predictions on the same axis,
-    to see whether models cluster together or diverge independently
-    from each other (not just from humans).
+    Pairwise CCC between models' predictions on the same axis, to see
+    whether models cluster together or diverge independently from each
+    other (not just from humans) — the model-vs-model analog of the
+    paper's own "pairwise annotator CCC" (Table II, µCCC_pairwise = 0.260
+    action / 0.356 consequence for their 6 human annotators).
 
     model_columns: {label: {"action": col, "consequence": col}}
     """
@@ -97,12 +140,8 @@ def cross_model_agreement(df: pd.DataFrame, model_columns: dict) -> dict:
             for b in labels[i + 1:]:
                 col_a = model_columns[a][axis]
                 col_b = model_columns[b][axis]
-                pair = _clean_pair(df[col_a], df[col_b])
-                r = None
-                if len(pair) >= 2:
-                    r = pair["human"].corr(pair["predicted"], method="pearson")
-                    r = None if pd.isna(r) else round(float(r), 4)
-                result[axis][f"{a} vs {b}"] = r
+                ccc = concordance_correlation_coefficient(df[col_a], df[col_b])
+                result[axis][f"{a} vs {b}"] = ccc
 
     return result
 
@@ -146,11 +185,18 @@ def attach_strata(df: pd.DataFrame) -> pd.DataFrame:
     return df.merge(dataset, on="ID", how="left")
 
 
-def compute_report(df: pd.DataFrame, model_labels: list[str]) -> dict:
+def compute_report(df: pd.DataFrame, model_labels: list[str]) -> AlignmentReport:
     """
     Full metrics report for a completed multi-model results dataframe
     (the shape produced by app.jobs.Job, one row per scenario with
     "{label}_Action" / "{label}_Consequence" columns per model).
+
+    Ground truth is Human_Action/Human_Consequence — your own annotations
+    (via the paper's R Shiny tool), already baked into the dataset.
+
+    Returns a typed AlignmentReport rather than a raw dict, so callers
+    (including MCP tools) get a discoverable schema instead of having to
+    infer structure from docstring prose.
     """
     df = attach_strata(df) if "ID" in df.columns else df
 
@@ -159,21 +205,26 @@ def compute_report(df: pd.DataFrame, model_labels: list[str]) -> dict:
         for label in model_labels
     }
 
-    per_model = {}
-    per_model_strata = {}
+    per_model: dict[str, ModelMetrics] = {}
+    per_model_strata: dict[str, dict[str, list[StratumMetrics]]] = {}
     for label, cols in model_columns.items():
         if cols["action"] not in df.columns or cols["consequence"] not in df.columns:
             continue
-        per_model[label] = model_metrics(df, cols["action"], cols["consequence"])
+        m = model_metrics(df, cols["action"], cols["consequence"])
+        per_model[label] = ModelMetrics(
+            action=AxisMetrics(**m["action"]),
+            consequence=AxisMetrics(**m["consequence"]),
+            combined=AxisMetrics(**m["combined"]),
+        )
         per_model_strata[label] = {
-            strata: stratified_metrics(df, cols["action"], cols["consequence"], strata_col=strata)
+            strata: [StratumMetrics(**row) for row in stratified_metrics(df, cols["action"], cols["consequence"], strata_col=strata)]
             for strata in STRATA_COLUMNS
             if strata in df.columns
         }
 
-    return {
-        "n_scenarios": len(df),
-        "models": per_model,
-        "cross_model_agreement": cross_model_agreement(df, model_columns) if len(model_columns) > 1 else {},
-        "stratified": per_model_strata,
-    }
+    return AlignmentReport(
+        n_scenarios=len(df),
+        models=per_model,
+        cross_model_agreement=cross_model_agreement(df, model_columns) if len(model_columns) > 1 else {},
+        stratified=per_model_strata,
+    )

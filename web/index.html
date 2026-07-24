@@ -64,8 +64,67 @@
         <div id="progress-label" class="progress-label"></div>
       </div>
 
+      <div id="batch-ccc-wrap"></div>
+
       <div class="table-wrap">
         <table id="batch-results-table">
+          <thead><tr></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Human-LLM Analyst Agent</h2>
+      <p class="hint">
+        A real LLM (Gemini) autonomously chains MCP tools — run evaluation, compute alignment
+        metrics, read the reasoning behind the worst-divergence cases — and writes a report.
+        Nothing about the analysis steps is scripted; the agent decides what to investigate.
+      </p>
+
+      <div class="agent-mode-select" id="agent-mode-select">
+        <label class="mode-chip"><input type="radio" name="agent-mode" value="scenario" checked /> Single scenario</label>
+        <label class="mode-chip"><input type="radio" name="agent-mode" value="random" /> Random sample</label>
+        <label class="mode-chip"><input type="radio" name="agent-mode" value="all" /> Entire dataset</label>
+      </div>
+
+      <div id="agent-scenario-field">
+        <label for="agent-scenario-input">Scenario</label>
+        <textarea id="agent-scenario-input" rows="3" placeholder="Enter a moral scenario for the agent to evaluate and explain."></textarea>
+      </div>
+
+      <div id="agent-sample-field" hidden>
+        <label for="agent-sample-size-input">Sample size</label>
+        <input type="number" id="agent-sample-size-input" min="1" value="15" />
+      </div>
+
+      <p class="hint" id="agent-all-warning" hidden>
+        Running the entire dataset across multiple models can take a long time and consumes
+        real API quota for every scenario — there is no progress bar while the agent works.
+      </p>
+
+      <div class="model-select" id="agent-model-select"></div>
+
+      <div class="actions">
+        <button id="run-agent-btn" class="btn primary">Run Agent</button>
+        <button id="download-agent-csv-btn" class="btn secondary" disabled>Download Comparison CSV</button>
+        <span id="agent-status" class="status"></span>
+      </div>
+
+      <div id="agent-log-wrap" hidden>
+        <div class="agent-log-header">
+          <span>Agent activity</span>
+          <span class="hint">Which MCP tools the agent is calling, live</span>
+        </div>
+        <div id="agent-log" class="agent-log"></div>
+      </div>
+
+      <div id="agent-report" class="agent-report" hidden></div>
+
+      <div id="agent-ccc-wrap"></div>
+
+      <div class="table-wrap">
+        <table id="agent-results-table">
           <thead><tr></tr></thead>
           <tbody></tbody>
         </table>

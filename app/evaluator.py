@@ -33,11 +33,15 @@ def _resolve_client(model: str):
     )
 
 
-def evaluate_single(scenario: str, model: str = "gemini"):
+def evaluate_single(scenario: str, model: str = "gemini", prompt_version: str = "current"):
 
-    print(f"[evaluator] evaluate_single called with model={model!r}", file=sys.stderr)
+    print(f"[evaluator] evaluate_single called with model={model!r}, prompt_version={prompt_version!r}", file=sys.stderr)
 
-    prompt = build_prompt(scenario)
+    if prompt_version == "current":
+        prompt = build_prompt(scenario)
+    else:
+        from app.prompt_versions import get_prompt_builder
+        prompt = get_prompt_builder(prompt_version)(scenario)
 
     client_fn = _resolve_client(model)
     response = client_fn(prompt)

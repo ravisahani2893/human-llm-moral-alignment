@@ -320,3 +320,154 @@ td.reasoning-cell .axis-label {
 }
 
 .modal-axis .axis-score { color: var(--text-dim); margin-left: 6px; }
+
+.agent-mode-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.mode-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  user-select: none;
+}
+
+.mode-chip input { accent-color: var(--accent); }
+
+#agent-scenario-field, #agent-sample-field {
+  margin-bottom: 14px;
+}
+
+#agent-sample-field input {
+  max-width: 140px;
+}
+
+.agent-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.agent-log-header .hint {
+  font-weight: 400;
+  margin: 0;
+}
+
+.agent-log {
+  background: #0b0d12;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-top: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.agent-log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 3px;
+}
+
+.agent-log-line .log-tool { color: var(--accent); }
+.agent-log-line .log-result { color: var(--text-dim); }
+.agent-log-line .log-progress { color: var(--good); }
+.agent-log-line .log-final { color: var(--good); font-weight: 600; }
+.agent-log-line .log-error { color: var(--bad); }
+.agent-log-line .log-task { color: var(--text); font-weight: 600; }
+
+.ccc-block {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  background: var(--surface-2);
+}
+
+.ccc-block h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+
+.ccc-block .hint {
+  margin: 0 0 12px;
+}
+
+.ccc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ccc-table th, .ccc-table td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.ccc-table th { color: var(--text-dim); font-weight: 600; }
+
+.ccc-table tr.ccc-reference-row td {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.ccc-table tr.ccc-reference-row td:first-child {
+  color: var(--text-dim);
+}
+
+.ccc-cell-good { color: var(--good); font-weight: 600; }
+.ccc-cell-bad { color: var(--bad); font-weight: 600; }
+.ccc-cell-mid { color: var(--text); }
+
+.ccc-block + .ccc-block { margin-top: 12px; }
+
+.agent-report {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-top: 16px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.agent-report h2, .agent-report h3, .agent-report h4 {
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+}
+
+.agent-report h2:first-child, .agent-report h3:first-child { margin-top: 0; }
+
+.agent-report p { margin: 0.6em 0; }
+
+.agent-report ul, .agent-report ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.agent-report code {
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+}
+
+.agent-report strong { color: var(--text); }
