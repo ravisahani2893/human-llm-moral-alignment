@@ -8,6 +8,7 @@ from pathlib import Path
 from app.dataset import load_dataset, sample_random
 from app.evaluator import evaluate_single, MODEL_LABELS
 from app.interpret import valence_label
+from app.prompt_versions import compute_prompt_hash
 
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -24,10 +25,12 @@ def _status_path(job_id: str) -> Path:
 
 
 class Job:
-    def __init__(self, models: list[str], sample_size: int | None):
+    def __init__(self, models: list[str], sample_size: int | None, prompt_version: str = "current"):
         self.id = uuid.uuid4().hex[:12]
         self.models = models
         self.sample_size = sample_size
+        self.prompt_version = prompt_version
+        self.prompt_template_hash = compute_prompt_hash(prompt_version)
         self.status = "running"  # running | completed | error
         self.error = None
         self.created_at = time.time()
@@ -45,6 +48,8 @@ class Job:
                 "status": self.status,
                 "error": self.error,
                 "models": self.models,
+                "prompt_version": self.prompt_version,
+                "prompt_template_hash": self.prompt_template_hash,
                 "total": self.total,
                 "completed_per_model": dict(self.completed_per_model),
                 "errors_per_model": dict(self.errors_per_model),
@@ -62,7 +67,7 @@ class Job:
             return [self.rows[k] for k in sorted(self.rows.keys())]
 
     def _column_order(self):
-        cols = ["ID", "Scenario", "Human_Action", "Human_Consequence"]
+        cols = ["ID", "Scenario", "Prompt_Version", "Prompt_Template_Hash", "Human_Action", "Human_Consequence"]
         for m in self.models:
             label = MODEL_LABELS.get(m, m)
             cols += [
@@ -129,6 +134,8 @@ def _run_job(job: Job):
                 job.rows[row["ID"]] = {
                     "ID": row["ID"],
                     "Scenario": row["input_sequence"],
+                    "Prompt_Version": job.prompt_version,
+                    "Prompt_Template_Hash": job.prompt_template_hash,
                     "Human_Action": row["Action_Valence"],
                     "Human_Consequence": row["Consequence_Valence"],
                 }
@@ -138,7 +145,7 @@ def _run_job(job: Job):
             label = MODEL_LABELS.get(model, model)
             for _, row in df.iterrows():
                 try:
-                    prediction = evaluate_single(row["input_sequence"], model=model)
+                    prediction = evaluate_single(row["input_sequence"], model=model, prompt_version=job.prompt_version)
                     action = prediction["action_valence"]
                     action_reasoning = prediction.get("action_reasoning", "")
                     action_factors = "; ".join(prediction.get("action_factors", []))
@@ -180,8 +187,8 @@ def _run_job(job: Job):
         job.write_status()
 
 
-def start_job(models: list[str], sample_size: int | None = None) -> Job:
-    job = Job(models=models, sample_size=sample_size)
+def start_job(models: list[str], sample_size: int | None = None, prompt_version: str = "current") -> Job:
+    job = Job(models=models, sample_size=sample_size, prompt_version=prompt_version)
     _jobs[job.id] = job
     job.write_status()
     thread = threading.Thread(target=_run_job, args=(job,), daemon=True)

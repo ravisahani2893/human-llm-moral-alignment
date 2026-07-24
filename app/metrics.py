@@ -146,6 +146,34 @@ def cross_model_agreement(df: pd.DataFrame, model_columns: dict) -> dict:
     return result
 
 
+def full_agreement_matrix(df: pd.DataFrame, model_labels: list[str]) -> dict[str, pd.DataFrame]:
+    """
+    Symmetric CCC agreement matrix with every model AND "Human" as raters,
+    per axis — a generalization of cross_model_agreement() (model-only) and
+    model_metrics()'s per-model human-CCC into one unified (N+1)x(N+1) view.
+
+    Returns {"action": DataFrame, "consequence": DataFrame}, each indexed
+    and columned by rater name (model labels + "Human"), diagonal = 1.0.
+    """
+    raters = {label: {"action": f"{label}_Action", "consequence": f"{label}_Consequence"} for label in model_labels}
+    raters["Human"] = {"action": "Human_Action", "consequence": "Human_Consequence"}
+
+    matrices: dict[str, pd.DataFrame] = {}
+    names = list(raters.keys())
+
+    for axis in ("action", "consequence"):
+        mat = pd.DataFrame(index=names, columns=names, dtype=float)
+        for i, a in enumerate(names):
+            mat.loc[a, a] = 1.0
+            for b in names[i + 1:]:
+                ccc = concordance_correlation_coefficient(df[raters[a][axis]], df[raters[b][axis]])
+                mat.loc[a, b] = ccc
+                mat.loc[b, a] = ccc
+        matrices[axis] = mat
+
+    return matrices
+
+
 def stratified_metrics(df: pd.DataFrame, action_col: str, consequence_col: str,
                         human_action_col: str = "Human_Action",
                         human_consequence_col: str = "Human_Consequence",

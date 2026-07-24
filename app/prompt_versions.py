@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from app.prompts import build_prompt as _current_build_prompt
@@ -33,3 +34,16 @@ def get_prompt_builder(version: str):
 
 def available_versions() -> list[str]:
     return list(_VERSION_BUILDERS.keys())
+
+
+def compute_prompt_hash(version: str) -> str:
+    """
+    A short fingerprint of the actual rendered prompt template for a
+    version — not just the version label — so that even if a version's
+    underlying template changes later, past results can be checked against
+    the exact template text that produced them, not just a name that may
+    now mean something different.
+    """
+    builder = get_prompt_builder(version)
+    template_text = builder("{{SCENARIO_PLACEHOLDER}}")
+    return hashlib.sha256(template_text.encode()).hexdigest()[:12]
