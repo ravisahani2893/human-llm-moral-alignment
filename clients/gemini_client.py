@@ -1,4 +1,5 @@
 from google import genai
+from google.genai import types
 from app.config import GEMINI_API_KEY
 import sys
 import time
@@ -15,7 +16,11 @@ def ask_gemini(prompt):
         try:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0,
+                    http_options=types.HttpOptions(timeout=60000),
+                ),
             )
             return response.text
 
@@ -26,3 +31,6 @@ def ask_gemini(prompt):
                 time.sleep(10)
             else:
                 raise
+        except Exception as e:
+            print(f"[gemini_client] call failed/timed out: {e}. Retrying in 10 seconds...", file=sys.stderr)
+            time.sleep(10)

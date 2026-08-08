@@ -8,13 +8,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import pandas as pd
-
+from app import mcp_client
 from app.agent_runs import get_agent_run, list_agent_runs, start_agent_run
 from app.dataset import load_dataset
 from app.evaluator import MODEL_CLIENTS, MODEL_LABELS, evaluate_models_for_scenario
+from app.export_jobs import get_export_job, list_export_jobs
 from app.jobs import get_job, list_jobs, start_job
-from app.metrics import PAPER_REFERENCE_CCC, compute_report
 
 app = FastAPI(title="Human LLM Moral Alignment API")
 
@@ -26,6 +25,11 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _start_mcp_client():
+    mcp_client.start()
+
+
 class EvaluateRequest(BaseModel):
     scenario: str
     models: list[str]
@@ -34,6 +38,10 @@ class EvaluateRequest(BaseModel):
 class BatchJobRequest(BaseModel):
     models: list[str]
     sample_size: int | None = None
+
+
+class ExportJobRequest(BaseModel):
+    model: str
 
 
 class AgentRunRequest(BaseModel):
@@ -106,21 +114,47 @@ def job_results(job_id: str):
     return {"rows": job.rows_snapshot()}
 
 
-@app.get("/api/jobs/{job_id}/metrics")
-def job_metrics(job_id: str):
-    job = get_job(job_id)
+@app.get("/api/exports")
+def exports_list():
+    return {"exports": list_export_jobs()}
+
+
+@app.post("/api/exports")
+def create_export(req: ExportJobRequest):
+    """
+    Trigger a dataset export the same way the CLI's trigger_export_via_mcp.py
+    does: as a real MCP client call to mcp_server.server's start_dataset_export
+    tool, over a persistent connection held for the API server's lifetime
+    (app.mcp_client). The background export thread runs inside that MCP
+    server subprocess; status/CSV endpoints below read the same shared
+    on-disk job state directly, so they don't need to go through MCP too.
+    """
+    _validate_models([req.model])
+    return mcp_client.call_tool("start_dataset_export", {"model": req.model})
+
+
+@app.get("/api/exports/{job_id}")
+def export_status(job_id: str):
+    job = get_export_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    if not job.csv_path.exists():
+        raise HTTPException(status_code=404, detail="Export job not found.")
+    return job.snapshot()
+
+
+@app.get("/api/exports/{job_id}/csv")
+def export_csv(job_id: str):
+    job = get_export_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Export job not found.")
+    snap = job.snapshot()
+    csv_path = Path(snap["csv_path"])
+    if not csv_path.exists():
         raise HTTPException(status_code=404, detail="CSV not yet available.")
-    model_labels = [MODEL_LABELS.get(m, m) for m in job.snapshot()["models"]]
-    df = pd.read_csv(job.csv_path)
-    return compute_report(df, model_labels)
-
-
-@app.get("/api/paper-reference")
-def paper_reference():
-    return PAPER_REFERENCE_CCC
+    return FileResponse(
+        csv_path,
+        media_type="text/csv",
+        filename=csv_path.name,
+    )
 
 
 @app.get("/api/jobs/{job_id}/csv")
@@ -188,20 +222,6 @@ def agent_run_results(run_id: str):
     if job is None:
         return {"rows": []}
     return {"rows": job.rows_snapshot()}
-
-
-@app.get("/api/agent/runs/{run_id}/metrics")
-def agent_run_metrics(run_id: str):
-    run = get_agent_run(run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="Agent run not found.")
-    job_id = _underlying_job_id(run)
-    job = get_job(job_id) if job_id else None
-    if job is None or not job.csv_path.exists():
-        raise HTTPException(status_code=404, detail="No metrics available for this run.")
-    model_labels = [MODEL_LABELS.get(m, m) for m in job.snapshot()["models"]]
-    df = pd.read_csv(job.csv_path)
-    return compute_report(df, model_labels)
 
 
 @app.get("/api/agent/runs/{run_id}/csv")

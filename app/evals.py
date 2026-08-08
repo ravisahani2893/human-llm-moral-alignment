@@ -3,33 +3,77 @@ import statistics
 import pandas as pd
 
 from app.dataset import load_dataset
-from app.evaluator import evaluate_single
-from app.metrics import axis_metrics
+from app.evaluator import calculate_mae, calculate_pearson, calculate_rmse, calculate_spearman, evaluate_single
+from app.metric_v1 import calculate_ccc
 from app.prompt_versions import available_versions
 
-GOLDEN_SET_SIZE = 30
-GOLDEN_SET_SEED = 42
+FIXED_SAMPLE_SIZE = 30
+FIXED_SAMPLE_SEED = 42
 
 
-def golden_set_ids(size: int = GOLDEN_SET_SIZE, seed: int = GOLDEN_SET_SEED) -> list[int]:
+def _axis_metrics(human: pd.Series, predicted: pd.Series) -> dict:
+    """
+    Alignment metrics between one axis of human labels and one axis of
+    model predictions, built on app.evaluator's calculate_* functions and
+    metric_v1.calculate_ccc (replaces the retired app.metrics module).
+    """
+    human = pd.Series(human).astype(float)
+    predicted = pd.Series(predicted).astype(float)
+    n = len(human)
+
+    if n == 0:
+        return {
+            "n": 0, "pearson_r": None, "spearman_r": None, "ccc": None,
+            "mae": None, "rmse": None, "sign_agreement": None, "mean_bias": None,
+        }
+
+    def sign(v):
+        if v > 0.05:
+            return 1
+        if v < -0.05:
+            return -1
+        return 0
+
+    signs_match = (human.apply(sign) == predicted.apply(sign)).mean()
+    mean_bias = (predicted - human).mean()
+
+    pearson_r = spearman_r = ccc = None
+    if n >= 2:
+        pearson_r = round(float(calculate_pearson(human, predicted)), 4)
+        spearman_r = round(float(calculate_spearman(human, predicted)), 4)
+        ccc = round(float(calculate_ccc(human, predicted)), 4)
+
+    return {
+        "n": n,
+        "pearson_r": pearson_r,
+        "spearman_r": spearman_r,
+        "ccc": ccc,
+        "mae": round(float(calculate_mae(human, predicted)), 4),
+        "rmse": round(float(calculate_rmse(human, predicted)), 4),
+        "sign_agreement": round(float(signs_match), 4),
+        "mean_bias": round(float(mean_bias), 4),
+    }
+
+
+def fixed_sample_ids(size: int = FIXED_SAMPLE_SIZE, seed: int = FIXED_SAMPLE_SEED) -> list[int]:
     """
     Fixed-seed sample of scenario IDs used as a repeatable regression set.
     Not hand-curated for difficulty (a reasonable future improvement) —
     what matters here is reproducibility: the same seed always returns the
     same IDs, so results are comparable run over run and version over
-    version, which is the whole point of a golden set.
+    version.
     """
     df = load_dataset()
     sample = df.sample(n=min(size, len(df)), random_state=seed)
     return sample["ID"].tolist()
 
 
-def evaluate_golden_set(model: str, version: str = "current", size: int = GOLDEN_SET_SIZE) -> dict:
+def evaluate_fixed_sample(model: str, version: str = "current", size: int = FIXED_SAMPLE_SIZE) -> dict:
     """
-    Run the golden set through one model/prompt-version combination and
-    report alignment metrics against the human gold standard.
+    Run the fixed evaluation sample through one model/prompt-version
+    combination and report alignment metrics against the human labels.
     """
-    ids = golden_set_ids(size)
+    ids = fixed_sample_ids(size)
     df = load_dataset()
     subset = df[df["ID"].isin(ids)]
 
@@ -50,10 +94,10 @@ def evaluate_golden_set(model: str, version: str = "current", size: int = GOLDEN
 
     result_df = pd.DataFrame(rows)
     if result_df.empty:
-        action = consequence = axis_metrics(pd.Series(dtype=float), pd.Series(dtype=float))
+        action = consequence = _axis_metrics(pd.Series(dtype=float), pd.Series(dtype=float))
     else:
-        action = axis_metrics(result_df["Human_Action"], result_df["Predicted_Action"])
-        consequence = axis_metrics(result_df["Human_Consequence"], result_df["Predicted_Consequence"])
+        action = _axis_metrics(result_df["Human_Action"], result_df["Predicted_Action"])
+        consequence = _axis_metrics(result_df["Human_Consequence"], result_df["Predicted_Consequence"])
 
     return {
         "model": model,
@@ -66,15 +110,15 @@ def evaluate_golden_set(model: str, version: str = "current", size: int = GOLDEN
     }
 
 
-def compare_prompt_versions(model: str, size: int = GOLDEN_SET_SIZE, versions: list[str] | None = None) -> list[dict]:
+def compare_prompt_versions(model: str, size: int = FIXED_SAMPLE_SIZE, versions: list[str] | None = None) -> list[dict]:
     """
-    Run the same golden set through every prompt version (v1, v2, current
-    by default) for one model, so a version change can be judged by
-    measured alignment against the human gold standard instead of by
+    Run the same fixed evaluation sample through every prompt version (v1,
+    v2, current by default) for one model, so a version change can be
+    judged by measured alignment against the human labels instead of by
     unrecorded impression.
     """
     versions = versions or available_versions()
-    return [evaluate_golden_set(model, version=v, size=size) for v in versions]
+    return [evaluate_fixed_sample(model, version=v, size=size) for v in versions]
 
 
 def stability_check(model: str, sample_size: int = 5, repeats: int = 3) -> list[dict]:
@@ -86,7 +130,7 @@ def stability_check(model: str, sample_size: int = 5, repeats: int = 3) -> list[
     signal.
     """
     full_df = load_dataset()
-    df = full_df.sample(n=min(sample_size, len(full_df)), random_state=GOLDEN_SET_SEED)
+    df = full_df.sample(n=min(sample_size, len(full_df)), random_state=FIXED_SAMPLE_SEED)
 
     results = []
     for _, row in df.iterrows():

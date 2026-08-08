@@ -1,7 +1,7 @@
 """
-CLI tool: compare prompt versions on the same golden set (fixed-seed
-reproducible sample), reporting real alignment metrics per version — for
-proving a prompt change actually helped, not just asserting it.
+CLI tool: compare prompt versions on the same fixed evaluation sample
+(fixed-seed, reproducible), reporting real alignment metrics per version —
+for proving a prompt change actually helped, not just asserting it.
 
 Usage:
     python -m tools.compare_prompts --model gemini --versions v2,current --size 15
@@ -19,16 +19,16 @@ OUTPUT_DIR = Path("outputs")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Compare prompt versions on the same golden set.")
+    parser = argparse.ArgumentParser(description="Compare prompt versions on the same fixed evaluation sample.")
     parser.add_argument("--model", default="gemini", help="Model key to evaluate")
     parser.add_argument("--versions", default="v2,current", help="Comma-separated prompt versions to compare")
-    parser.add_argument("--size", type=int, default=15, help="Golden set size (fixed-seed, reproducible)")
+    parser.add_argument("--size", type=int, default=15, help="Fixed evaluation sample size (fixed-seed, reproducible)")
     parser.add_argument("--out", default="prompt_comparison.csv", help="Output filename (under outputs/)")
     args = parser.parse_args()
 
     versions = [v.strip() for v in args.versions.split(",") if v.strip()]
 
-    print(f"[compare] model={args.model!r}, versions={versions}, golden set size={args.size}", file=sys.stderr)
+    print(f"[compare] model={args.model!r}, versions={versions}, sample size={args.size}", file=sys.stderr)
     for v in versions:
         print(f"[compare]   {v} -> template hash {compute_prompt_hash(v)}", file=sys.stderr)
 
@@ -56,7 +56,7 @@ def main():
     out_path = OUTPUT_DIR / args.out
     df.to_csv(out_path, index=False)
 
-    print(f"\n=== Prompt version comparison: {args.model} (golden set n={args.size}) ===")
+    print(f"\n=== Prompt version comparison: {args.model} (fixed sample n={args.size}) ===")
     print(df.to_string(index=False))
     print(f"\n[compare] saved to {out_path}", file=sys.stderr)
 

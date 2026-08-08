@@ -152,4 +152,4 @@ This matches the tool's reported value exactly (`-0.2533`) — verified by an in
 - **CSV output** (`outputs/job_<id>.csv`): raw `Human_Action`/`Human_Consequence`/`{Model}_Action`/`{Model}_Consequence` values, one row per scenario — the *input* to all of the above, not the metrics themselves.
 - **`/api/jobs/{id}/metrics`** (and the UI's CCC table): the *output* of §2.1–2.7, aggregated across all scenarios in that job.
 - **`tools/agreement_matrix.py`**: the §3 full matrix, as CSV.
-- **`tools/compare_prompts.py`**: §2.1–2.7 computed once per prompt version, on the same fixed golden-set sample, side by side.
+- **`tools/compare_prompts.py`**: §2.1–2.7 computed once per prompt version, on the same fixed evaluation sample, side by side.

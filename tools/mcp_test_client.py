@@ -64,7 +64,7 @@ async def smoke_test(sample_size: int = 2, models: list[str] = None):
             all_ok &= _check(
                 "expected tools registered",
                 {"start_multi_model_evaluation", "get_job_status", "list_recent_jobs",
-                 "compute_alignment_metrics"} <= tool_names,
+                 "start_dataset_export", "get_export_status"} <= tool_names,
                 f"found {sorted(tool_names)}",
             )
 
@@ -112,15 +112,6 @@ async def smoke_test(sample_size: int = 2, models: list[str] = None):
             result = await session.call_tool("list_recent_jobs", arguments={})
             job_ids = {json.loads(c.text)["id"] for c in result.content}
             all_ok &= _check("job visible in list_recent_jobs", job_id in job_ids)
-
-            print("\n--- compute_alignment_metrics on the completed job's CSV ---")
-            result = await session.call_tool(
-                "compute_alignment_metrics",
-                arguments={"csv_path": snapshot["csv_path"], "models": models},
-            )
-            report = json.loads(result.content[0].text)
-            all_ok &= _check("alignment report has expected shape", "models" in report and "n_scenarios" in report)
-            print(f"  n_scenarios={report.get('n_scenarios')}")
 
             print("\n--- reading dataset resource ---")
             from pydantic import AnyUrl

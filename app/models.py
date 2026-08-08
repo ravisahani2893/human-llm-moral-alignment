@@ -33,6 +33,17 @@ class JobSnapshot(BaseModel):
     csv_path: str
 
 
+class ExportJobSnapshot(BaseModel):
+    id: str
+    model: str
+    status: str
+    error: str | None = None
+    completed: int
+    total: int
+    created_at: float
+    csv_path: str
+
+
 class AxisMetrics(BaseModel):
     n: int
     pearson_r: float | None = None

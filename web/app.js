@@ -83,6 +83,9 @@ async function loadModels() {
   buildModelSelect("single-model-select");
   buildModelSelect("batch-model-select");
   buildModelSelect("agent-model-select");
+
+  const exportSelect = document.getElementById("export-model-select");
+  exportSelect.innerHTML = MODELS.map((m) => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join("");
 }
 
 async function loadDatasetCount() {
@@ -249,103 +252,6 @@ function renderBatchRows(tableId, rows, models) {
 
 // ---- CCC (Concordance Correlation Coefficient) metrics, paper-style ----
 
-let PAPER_REFERENCE = null;
-
-async function loadPaperReference() {
-  const res = await fetch(`${API}/api/paper-reference`);
-  PAPER_REFERENCE = await res.json();
-}
-
-function fmtCcc(v) {
-  return v === null || v === undefined ? "—" : v.toFixed(3);
-}
-
-function cccCellClass(v) {
-  if (v === null || v === undefined) return "";
-  if (v >= 0.5) return "ccc-cell-good";
-  if (v < 0.2) return "ccc-cell-bad";
-  return "ccc-cell-mid";
-}
-
-function renderCccTables(containerId, report, models, options = {}) {
-  const container = document.getElementById(containerId);
-  if (!report || !report.models) {
-    container.innerHTML = "";
-    return;
-  }
-
-  const {
-    title = "Concordance Correlation Coefficient (CCC) vs Human Gold Standard",
-    subtitle = "Lin's CCC — the same metric the source paper reports in Table II. Unlike Pearson r, it penalizes a systematic mean/scale shift, not just weak correlation.",
-    showPaperReference = true,
-    showCrossModel = true,
-  } = options;
-
-  const modelLabels = models.map((m) => MODELS.find((x) => x.id === m)?.label || m);
-  const refHeaders = showPaperReference
-    ? "<th>Paper: Human Pairwise</th><th>Paper: Human vs EWE Gold Standard</th>"
-    : "";
-
-  let html = `<div class="ccc-block">
-    <h3>${escapeHtml(title)}</h3>
-    <p class="hint">${subtitle}</p>
-    <table class="ccc-table">
-      <thead><tr><th>Valence Type</th>${modelLabels.map((l) => `<th>${escapeHtml(l)}</th>`).join("")}${refHeaders}</tr></thead>
-      <tbody>`;
-
-  const rowLabels = { action: "Action", consequence: "Consequence", combined: "Combined*" };
-  ["action", "consequence", "combined"].forEach((axis) => {
-    const rowClass = axis === "combined" ? ' class="ccc-reference-row"' : "";
-    html += `<tr${rowClass}><td>${rowLabels[axis]}</td>`;
-    modelLabels.forEach((ml) => {
-      const m = report.models[ml];
-      const ccc = m ? m[axis].ccc : null;
-      html += `<td class="${cccCellClass(ccc)}">${fmtCcc(ccc)}</td>`;
-    });
-    if (showPaperReference) {
-      const ref = PAPER_REFERENCE ? PAPER_REFERENCE[axis] : null;
-      html += `<td>${ref ? ref.pairwise_human.toFixed(3) : "—"}</td>`;
-      html += `<td>${ref ? ref.human_vs_ewe_gold_standard.toFixed(3) : "—"}</td>`;
-    }
-    html += `</tr>`;
-  });
-
-  html += `</tbody></table>
-    <p class="hint">*Combined: CCC computed by stacking action and consequence values together into one series${showPaperReference ? " — the paper does not report this figure" : ""}.</p>
-  </div>`;
-
-  if (showCrossModel && modelLabels.length > 1 && report.cross_model_agreement) {
-    const pairs = Object.keys(report.cross_model_agreement.action || {});
-    if (pairs.length) {
-      html += `<div class="ccc-block">
-        <h3>Cross-Model CCC</h3>
-        <p class="hint">Agreement between models themselves, not vs. human — the model analog of the paper's own pairwise human-annotator CCC (0.260 action / 0.356 consequence).</p>
-        <table class="ccc-table">
-          <thead><tr><th>Model Pair</th><th>Action CCC</th><th>Consequence CCC</th></tr></thead>
-          <tbody>`;
-      pairs.forEach((pair) => {
-        const a = report.cross_model_agreement.action[pair];
-        const c = report.cross_model_agreement.consequence[pair];
-        html += `<tr><td>${escapeHtml(pair)}</td><td class="${cccCellClass(a)}">${fmtCcc(a)}</td><td class="${cccCellClass(c)}">${fmtCcc(c)}</td></tr>`;
-      });
-      html += `</tbody></table></div>`;
-    }
-  }
-
-  container.innerHTML = html;
-}
-
-async function fetchAndRenderCcc(metricsUrl, containerId, models) {
-  try {
-    const res = await fetch(metricsUrl);
-    if (!res.ok) return;
-    const report = await res.json();
-    renderCccTables(containerId, report, models);
-  } catch {
-    // metrics are a supplement to the main result; fail quietly
-  }
-}
-
 async function pollJob(jobId, models) {
   const res = await fetch(`${API}/api/jobs/${jobId}`);
   const job = await res.json();
@@ -370,7 +276,6 @@ async function pollJob(jobId, models) {
     setStatus("batch-status", "Completed.", "ok");
     document.getElementById("run-batch-btn").disabled = false;
     document.getElementById("download-csv-btn").disabled = false;
-    fetchAndRenderCcc(`${API}/api/jobs/${jobId}/metrics`, "batch-ccc-wrap", models);
   } else {
     setStatus("batch-status", job.error || "Job failed.", "error");
     document.getElementById("run-batch-btn").disabled = false;
@@ -395,7 +300,6 @@ async function runBatch() {
   setStatus("batch-status", "Starting job…");
   buildBatchTableHead("batch-results-table", models);
   document.querySelector("#batch-results-table tbody").innerHTML = "";
-  document.getElementById("batch-ccc-wrap").innerHTML = "";
 
   try {
     const res = await fetch(`${API}/api/jobs`, {
@@ -613,7 +517,6 @@ async function pollAgentRun(runId, models) {
         renderBatchRows("agent-results-table", resultsData.rows, models);
       }
       document.getElementById("download-agent-csv-btn").disabled = false;
-      fetchAndRenderCcc(`${API}/api/agent/runs/${runId}/metrics`, "agent-ccc-wrap", models);
     } else if (run.mode === "scenario" && run.scenario_evaluations && run.scenario_evaluations.length) {
       renderScenarioModeTable(run, models);
     }
@@ -685,6 +588,73 @@ document.getElementById("run-agent-btn").addEventListener("click", runAgent);
 document.getElementById("download-agent-csv-btn").addEventListener("click", downloadAgentCsv);
 syncAgentModeFields();
 
+// ---- Per-model dataset export ----
+
+let currentExportJobId = null;
+let exportPollTimer = null;
+
+async function pollExportJob(jobId) {
+  const res = await fetch(`${API}/api/exports/${jobId}`);
+  const job = await res.json();
+
+  const pct = job.total ? Math.round((job.completed / job.total) * 100) : 0;
+  document.getElementById("export-progress-fill").style.width = `${pct}%`;
+  document.getElementById("export-progress-label").textContent =
+    job.total ? `${job.completed} / ${job.total} scenarios done (${pct}%)` : "Starting…";
+
+  if (job.status === "running") {
+    exportPollTimer = setTimeout(() => pollExportJob(jobId), 2000);
+  } else if (job.status === "completed") {
+    setStatus("export-status", "Completed.", "ok");
+    document.getElementById("run-export-btn").disabled = false;
+    document.getElementById("download-export-csv-btn").disabled = false;
+  } else {
+    setStatus("export-status", job.error || "Export failed.", "error");
+    document.getElementById("run-export-btn").disabled = false;
+  }
+}
+
+async function runExport() {
+  const model = document.getElementById("export-model-select").value;
+  if (!model) {
+    setStatus("export-status", "Select a model.", "error");
+    return;
+  }
+
+  clearTimeout(exportPollTimer);
+  document.getElementById("run-export-btn").disabled = true;
+  document.getElementById("download-export-csv-btn").disabled = true;
+  document.getElementById("export-progress-wrap").hidden = false;
+  document.getElementById("export-progress-fill").style.width = "0%";
+  setStatus("export-status", "Starting export…");
+
+  try {
+    const res = await fetch(`${API}/api/exports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Request failed");
+    }
+    const job = await res.json();
+    currentExportJobId = job.id;
+    setStatus("export-status", "Running…");
+    pollExportJob(currentExportJobId);
+  } catch (e) {
+    setStatus("export-status", e.message, "error");
+    document.getElementById("run-export-btn").disabled = false;
+  }
+}
+
+function downloadExportCsv() {
+  if (!currentExportJobId) return;
+  window.location.href = `${API}/api/exports/${currentExportJobId}/csv`;
+}
+
+document.getElementById("run-export-btn").addEventListener("click", runExport);
+document.getElementById("download-export-csv-btn").addEventListener("click", downloadExportCsv);
+
 loadModels();
 loadDatasetCount();
-loadPaperReference();

@@ -20,8 +20,8 @@ This server exposes the project's evaluation pipeline over the Model Context Pro
 
 | Tool | What it does | Key args | Notes |
 |---|---|---|---|
-| `run_golden_set_eval` | Scores a **fixed, reproducible** sample (same scenario IDs every time, via a fixed random seed) with one model/prompt-version combo. | `model`, `version`, `size` | Use this instead of a fresh random sample when you want a repeatable regression check — the point of a "golden set" is that results are comparable run over run. |
-| `compare_prompt_versions` | Runs the same golden set through every prompt version (`v1`, `v2`, `current`) for one model and reports metrics for each. | `model`, `size`, `versions` | Turns "we think the newer prompt is better" into a measured claim. |
+| `run_fixed_sample_eval` | Scores a **fixed, reproducible** sample (same scenario IDs every time, via a fixed random seed) with one model/prompt-version combo. | `model`, `version`, `size` | Use this instead of a fresh random sample when you want a repeatable regression check — the point of a fixed sample is that results are comparable run over run. |
+| `compare_prompt_versions` | Runs the same fixed evaluation sample through every prompt version (`v1`, `v2`, `current`) for one model and reports metrics for each. | `model`, `size`, `versions` | Turns "we think the newer prompt is better" into a measured claim. |
 | `check_stability` | Re-runs the same scenarios multiple times with one model to measure run-to-run variance (mean/stdev of valence per scenario). | `model`, `sample_size`, `repeats` | Tells you how much of a model's "divergence from humans" is genuine disagreement versus sampling noise. |
 | `list_prompt_versions` | Lists which prompt versions exist (`v1`, `v2`, `current`). | — | Small utility, used by the other two eval tools. |
 

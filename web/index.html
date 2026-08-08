@@ -64,13 +64,35 @@
         <div id="progress-label" class="progress-label"></div>
       </div>
 
-      <div id="batch-ccc-wrap"></div>
-
       <div class="table-wrap">
         <table id="batch-results-table">
           <thead><tr></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Per-Model Dataset Export</h2>
+      <p class="hint">
+        Runs one model on the entire dataset and saves its raw predictions to
+        <code>outputs/output_&lt;model&gt;_entire_dataset.csv</code> — no human comparison
+        columns, just the model's own scores and reasoning, meant as raw input for metrics
+        computed separately. Resumable — safe to re-run after an interruption.
+      </p>
+
+      <label for="export-model-select">Model</label>
+      <select id="export-model-select"></select>
+
+      <div class="actions">
+        <button id="run-export-btn" class="btn primary">Start Export</button>
+        <button id="download-export-csv-btn" class="btn secondary" disabled>Download CSV</button>
+        <span id="export-status" class="status"></span>
+      </div>
+
+      <div class="progress-wrap" id="export-progress-wrap" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="export-progress-fill"></div></div>
+        <div id="export-progress-label" class="progress-label"></div>
       </div>
     </section>
 

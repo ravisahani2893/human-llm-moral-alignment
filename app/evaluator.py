@@ -1,18 +1,25 @@
 import json
 import sys
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from app.dataset import load_dataset, sample_random, save_predictions
 from app.interpret import valence_label
+from app.metric_v1 import calculate_ccc
 from app.prompts import build_prompt
+from clients.claude_client import ask_claude
+from clients.deepseek_client import ask_deepseek
 from clients.gemini_client import ask_gemini
-from clients.github_client import ask_github
+from clients.groq_client import ask_groq
+from clients.openai_client import ask_openai
+from scipy.stats import pearsonr, spearmanr
 
 MODEL_CLIENTS = {
     "gemini": lambda prompt: ask_gemini(prompt),
-    "lama": lambda prompt: ask_github(prompt, model="meta/Llama-3.3-70B-Instruct"),
-    "deep-seek": lambda prompt: ask_github(prompt, model="deepseek/deepseek-v3-0324"),
-    "gpt-github": lambda prompt: ask_github(prompt, model="openai/gpt-4.1")
+    "lama": lambda prompt: ask_groq(prompt, model="llama-3.3-70b-versatile"),
+    "deep-seek": lambda prompt: ask_deepseek(prompt, model="deepseek-chat"),
+    "gpt-github": lambda prompt: ask_openai(prompt, model="gpt-4.1"),
+    "claude": lambda prompt: ask_claude(prompt),
 }
 
 MODEL_LABELS = {
@@ -20,6 +27,7 @@ MODEL_LABELS = {
     "lama": "Llama 3.3 70B",
     "deep-seek": "DeepSeek V3",
     "gpt-github": "GPT-4.1",
+    "claude": "Claude Sonnet 5",
 }
 
 
@@ -178,3 +186,199 @@ def evaluate_dataset(model: str = "gemini"):
         "evaluated": len(results),
         "output_file": output_file
     }
+
+
+def evaluate_alignment(model_name: str):
+    """
+    Evaluate the alignment of a model's predictions with human annotations
+    using Lin's Concordance Correlation Coefficient (CCC).
+    """
+    
+    df = load_dataset()
+    predictions = []
+
+    # Load output file to evaluate model predictions against human annotations
+    # Load file from outputs/{model_name}_predictions.csv
+    output_file = f"outputs/output_{model_name.replace('/', '_')}_entire_dataset.csv"
+    print(f"Loading predictions from {output_file}")
+
+
+    try:
+        df_predictions = pd.read_csv(output_file)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Predictions file not found: {output_file}. Please run evaluate_dataset first.")
+
+    # Extract human and model scores
+    human_action_valence = df["Action_Valence"].tolist()
+    human_consequence_valence = df["Consequence_Valence"].tolist()
+    
+
+    if model_name == "gemini":
+        model_action_valence = df_predictions["gemini_action"].tolist()
+        model_consequence_valence = df_predictions["gemini_consequences"].tolist()
+    elif model_name == "lama":
+        model_action_valence = df_predictions["lama_action"].tolist()
+        model_consequence_valence = df_predictions["lama_consequences"].tolist()        
+    elif model_name == "deep-seek":
+        model_action_valence = df_predictions["deepseek_action"].tolist()
+        model_consequence_valence = df_predictions["deepseek_consequences"].tolist()
+    elif model_name == "gpt-github":
+        model_action_valence = df_predictions["gpt-github_action"].tolist()
+        model_consequence_valence = df_predictions["gpt-github_consequences"].tolist()
+    elif model_name == "claude":
+        model_action_valence = df_predictions["claude_action"].tolist()
+        model_consequence_valence = df_predictions["claude_consequences"].tolist()
+    else:
+        raise ValueError(f"Unsupported model: {model_name!r}. Expected one of {list(MODEL_CLIENTS.keys())}")
+
+
+    # Calculate MAE for action and consequence valence
+    action_mae = calculate_mae(human_action_valence, model_action_valence)
+    consequence_mae = calculate_mae(human_consequence_valence, model_consequence_valence)
+
+    # Calculate RMSE for action and consequence valence
+    action_rmse = calculate_rmse(human_action_valence, model_action_valence)
+    consequence_rmse = calculate_rmse(human_consequence_valence, model_consequence_valence)
+
+    action_results = {
+        "ccc": calculate_ccc(human_action_valence, model_action_valence),
+        "mae": calculate_mae(human_action_valence, model_action_valence),
+        "rmse": calculate_rmse(human_action_valence, model_action_valence),
+        "pearson": calculate_pearson(human_action_valence, model_action_valence),
+        "spearman": calculate_spearman(human_action_valence, model_action_valence),
+    }
+
+    consequence_results = {
+        "ccc": calculate_ccc(human_consequence_valence, model_consequence_valence),
+        "mae": calculate_mae(human_consequence_valence, model_consequence_valence),
+        "rmse": calculate_rmse(human_consequence_valence, model_consequence_valence),
+        "pearson": calculate_pearson(human_consequence_valence, model_consequence_valence),
+        "spearman": calculate_spearman(human_consequence_valence, model_consequence_valence),
+    }
+
+    return {
+        "model": model_name,
+        "action_results": action_results,
+        "consequence_results": consequence_results,
+    }
+
+
+def calculate_mae(human_scores, model_scores):
+    """
+    Calculate Mean Absolute Error (MAE).
+
+    Parameters
+    ----------
+    human_scores : array-like
+        Human annotations.
+
+    model_scores : array-like
+        Model predictions.
+
+    Returns
+    -------
+    float
+        Mean Absolute Error.
+    """
+
+    human = np.asarray(human_scores, dtype=float)
+    model = np.asarray(model_scores, dtype=float)
+
+    if len(human) != len(model):
+        raise ValueError(
+            "Human and model arrays must have the same length."
+        )
+
+    return np.mean(np.abs(human - model))
+
+
+def calculate_rmse(human_scores, model_scores):
+    """
+    Calculate Root Mean Squared Error (RMSE).
+
+    Parameters
+    ----------
+    human_scores : array-like
+        Human annotations.
+
+    model_scores : array-like
+        Model predictions.
+
+    Returns
+    -------
+    float
+        Root Mean Squared Error.
+    """
+
+    human = np.asarray(human_scores, dtype=float)
+    model = np.asarray(model_scores, dtype=float)
+
+    if len(human) != len(model):
+        raise ValueError(
+            "Human and model arrays must have the same length."
+        )
+
+    mse = np.mean((human - model) ** 2)
+
+    return np.sqrt(mse)
+
+def calculate_pearson(human_scores, model_scores):
+    """
+    Calculate Pearson Correlation Coefficient.
+
+    Parameters
+    ----------
+    human_scores : array-like
+        Human annotations.
+
+    model_scores : array-like
+        Model predictions.
+
+    Returns
+    -------
+    float
+        Pearson Correlation Coefficient.
+    """
+
+    human = np.asarray(human_scores, dtype=float)
+    model = np.asarray(model_scores, dtype=float)
+
+    if len(human) != len(model):
+        raise ValueError(
+            "Human and model arrays must have the same length."
+        )
+
+    correlation, _ = pearsonr(human, model)
+
+    return correlation
+
+
+def calculate_spearman(human_scores, model_scores):
+    """
+    Calculate Spearman Rank Correlation Coefficient.
+
+    Parameters
+    ----------
+    human_scores : array-like
+        Human annotations.
+
+    model_scores : array-like
+        Model predictions.
+
+    Returns
+    -------
+    float
+        Spearman Rank Correlation Coefficient.
+    """
+
+    human = np.asarray(human_scores, dtype=float)
+    model = np.asarray(model_scores, dtype=float)
+
+    if len(human) != len(model):
+        raise ValueError(
+            "Human and model arrays must have the same length."
+        )
+
+    correlation, _ = spearmanr(human, model)
+
+    return correlation

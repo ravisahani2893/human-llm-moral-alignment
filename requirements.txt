@@ -4,6 +4,7 @@ pandas
 typing_extensions
 mcp
 openai
+anthropic
 logging
 pydantic
 fastapi

@@ -1,13 +1,12 @@
 import sys
 
-import pandas as pd
 from mcp.server.fastmcp import FastMCP, Context
 
 from app.dataset import load_dataset
 from app import evals
 from app.jobs import OUTPUT_DIR, get_job, list_jobs, start_job
-from app.metrics import compute_report
-from app.models import AlignmentReport, JobSnapshot, MoralValenceResponse
+from app.export_jobs import get_export_job, list_export_jobs, start_export_job
+from app.models import ExportJobSnapshot, JobSnapshot, MoralValenceResponse
 from app.prompt_versions import available_versions
 from app.prompts import build_prompt
 
@@ -32,7 +31,7 @@ async def evaluate_moral_scenario(
     """
     Evaluate a single moral scenario with one model.
 
-    model must be one of: "gemini", "lama", "deep-seek", "gpt-github".
+    model must be one of: "gemini", "lama", "deep-seek", "gpt-github", "claude".
     """
     await ctx.info(f"evaluate_moral_scenario called with model={model!r}")
     prediction = evaluate_single(scenario, model=model)
@@ -80,19 +79,64 @@ async def start_multi_model_evaluation(
     NOT wait for the run to finish, since a full run can take many minutes
     and would otherwise block this tool call for that entire time.
 
-    models must be a subset of: "gemini", "lama", "deep-seek", "gpt-github".
+    models must be a subset of: "gemini", "lama", "deep-seek", "gpt-github", "claude".
     sample_size limits the run to a random sample of N scenarios; omit it to
     run the full dataset (slow, and consumes real API quota for every model).
 
     After calling this, poll get_job_status(job_id) until status is
-    "completed", then pass its csv_path to compute_alignment_metrics to
-    analyze the results, or read the CSV directly to inspect individual
-    scenario reasoning. Jobs are visible from any process (web app or this
-    MCP server) since status is persisted to disk, not just kept in memory.
+    "completed", then read the CSV directly to inspect scenario reasoning
+    or compute your own alignment metrics against it. Jobs are visible from
+    any process (web app or this MCP server) since status is persisted to
+    disk, not just kept in memory.
     """
     await ctx.info(f"start_multi_model_evaluation called with models={models}, sample_size={sample_size}")
     job = start_job(models=models, sample_size=sample_size)
     return JobSnapshot(**job.snapshot())
+
+
+@mcp.tool()
+async def start_dataset_export(model: str, ctx: Context = None) -> ExportJobSnapshot:
+    """
+    Start a background export of one model's raw predictions on the ENTIRE
+    dataset to outputs/output_<model>_entire_dataset.csv — no human
+    comparison columns, just ID, Scenario, {model}_action,
+    {model}_consequences, action_reasoning, consequences_reasoning. Meant
+    as raw input for metrics computed separately later, once paired with
+    human labels.
+
+    Returns immediately with a job id — does NOT wait for the run to finish
+    (a full 500-scenario run takes many minutes). Progressive and resumable:
+    if a prior export for this model already exists, only the remaining
+    scenarios are processed, so this is always safe to call again after an
+    interruption.
+
+    model must be one of: "gemini", "lama", "deep-seek", "gpt-github", "claude".
+    Poll get_export_status(job_id) until status is "completed".
+    """
+    await ctx.info(f"start_dataset_export called with model={model!r}")
+    job = start_export_job(model=model)
+    return ExportJobSnapshot(**job.snapshot())
+
+
+@mcp.tool()
+async def get_export_status(job_id: str, ctx: Context = None) -> ExportJobSnapshot:
+    """
+    Check progress of a dataset export job started by start_dataset_export,
+    including jobs started from another process (status is persisted to
+    disk, not process-local).
+    """
+    await ctx.info(f"get_export_status called with job_id={job_id!r}")
+    job = get_export_job(job_id)
+    if job is None:
+        raise ValueError(f"No export job found with id {job_id!r}.")
+    return ExportJobSnapshot(**job.snapshot())
+
+
+@mcp.tool()
+async def list_recent_exports(ctx: Context = None) -> list[ExportJobSnapshot]:
+    """List all known dataset export jobs (most recent first), across processes."""
+    await ctx.info("list_recent_exports called")
+    return [ExportJobSnapshot(**snap) for snap in list_export_jobs()]
 
 
 @mcp.tool()
@@ -119,55 +163,30 @@ async def list_recent_jobs(ctx: Context = None) -> list[JobSnapshot]:
     return [JobSnapshot(**snap) for snap in list_jobs()]
 
 
-@mcp.tool()
-async def compute_alignment_metrics(
-    csv_path: str,
-    models: list[str],
-    ctx: Context = None,
-) -> AlignmentReport:
-    """
-    Compute human-vs-model alignment metrics from a multi-model results CSV
-    (produced by start_multi_model_evaluation, or downloaded from the web
-    app's batch-run CSV export).
-
-    Returns, per model: Pearson/Spearman correlation, MAE, RMSE, sign
-    agreement, and mean bias for the action axis, consequence axis, and both
-    combined; pairwise cross-model correlation; and a breakdown by dataset
-    metadata (pattern/source/input_type) showing where each model diverges
-    most from human labels.
-
-    models must be a subset of: "gemini", "lama", "deep-seek", "gpt-github".
-    """
-    await ctx.info(f"compute_alignment_metrics called with csv_path={csv_path!r}, models={models}")
-    df = pd.read_csv(csv_path)
-    model_labels = [MODEL_LABELS.get(m, m) for m in models]
-    return compute_report(df, model_labels)
-
-
 # ---- Evals tools ----
 
 @mcp.tool()
-async def run_golden_set_eval(
+async def run_fixed_sample_eval(
     model: str,
     version: str = "current",
     size: int = 30,
     ctx: Context = None,
 ) -> dict:
     """
-    Evaluate a fixed, reproducible sample of scenarios (the "golden set" —
-    same scenario IDs every time for a given size, via a fixed random seed)
-    with one model/prompt-version combination, and report alignment metrics
-    against the human gold standard.
+    Evaluate a fixed, reproducible sample of scenarios (same scenario IDs
+    every time for a given size, via a fixed random seed) with one
+    model/prompt-version combination, and report alignment metrics against
+    the human-annotated labels.
 
-    model must be one of: "gemini", "lama", "deep-seek", "gpt-github".
+    model must be one of: "gemini", "lama", "deep-seek", "gpt-github", "claude".
     version must be one of the values returned by list_prompt_versions
     (typically "v1", "v2", "current").
 
     Use this instead of start_multi_model_evaluation when you want a
     repeatable regression check rather than a fresh random sample.
     """
-    await ctx.info(f"run_golden_set_eval called with model={model!r}, version={version!r}, size={size}")
-    return evals.evaluate_golden_set(model=model, version=version, size=size)
+    await ctx.info(f"run_fixed_sample_eval called with model={model!r}, version={version!r}, size={size}")
+    return evals.evaluate_fixed_sample(model=model, version=version, size=size)
 
 
 @mcp.tool(name="compare_prompt_versions")
@@ -178,10 +197,11 @@ async def compare_prompt_versions_tool(
     ctx: Context = None,
 ) -> list[dict]:
     """
-    Run the same golden set through every prompt version (v1, v2, current
-    by default) for one model, so a prompt change can be judged by measured
-    alignment against human labels instead of by unrecorded impression.
-    Returns one alignment-metrics report per version, in the order given.
+    Run the same fixed evaluation sample through every prompt version (v1,
+    v2, current by default) for one model, so a prompt change can be judged
+    by measured alignment against human labels instead of by unrecorded
+    impression. Returns one alignment-metrics report per version, in the
+    order given.
     """
     await ctx.info(f"compare_prompt_versions called with model={model!r}, size={size}, versions={versions}")
     return evals.compare_prompt_versions(model=model, size=size, versions=versions)
@@ -207,7 +227,7 @@ async def check_stability(
 
 @mcp.tool()
 async def list_prompt_versions(ctx: Context = None) -> list[str]:
-    """List available prompt versions that can be passed to run_golden_set_eval / compare_prompt_versions_tool."""
+    """List available prompt versions that can be passed to run_fixed_sample_eval / compare_prompt_versions_tool."""
     await ctx.info("list_prompt_versions called")
     return available_versions()
 
