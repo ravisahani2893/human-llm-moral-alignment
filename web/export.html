@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Per-Model Export — Human vs LLM Moral Alignment</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>Human ↔ LLM Moral Alignment</h1>
+      <p class="subtitle">Score moral scenarios for Action and Consequence valence across one or more models.</p>
+    </header>
+
+    <nav class="site-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="single.html">Single Scenario</a>
+      <a href="dataset.html">Full Dataset</a>
+      <a href="export.html" class="active">Per-Model Export</a>
+      <a href="agent.html">Agent</a>
+    </nav>
+
+    <section class="card">
+      <h2>Per-Model Dataset Export</h2>
+      <p class="hint">
+        Runs one model on the entire dataset and saves its raw predictions to
+        <code>outputs/output_&lt;model&gt;[_&lt;prompt_version&gt;]_entire_dataset.csv</code> — no human
+        comparison columns, just the model's own scores, meant as raw input for
+        <a href="agent.html">compute_alignment_metrics</a>. Resumable — safe to re-run after an interruption.
+        Triggered via a real MCP tool call (start_dataset_export), not a direct function call.
+      </p>
+
+      <label for="export-model-select">Model</label>
+      <select id="export-model-select"></select>
+
+      <label for="export-prompt-version-select">Prompt version</label>
+      <select id="export-prompt-version-select"></select>
+
+      <div class="actions">
+        <button id="run-export-btn" class="btn primary">Start Export</button>
+        <button id="download-export-csv-btn" class="btn secondary" disabled>Download CSV</button>
+        <span id="export-status" class="status"></span>
+      </div>
+
+      <div class="progress-wrap" id="export-progress-wrap" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="export-progress-fill"></div></div>
+        <div id="export-progress-label" class="progress-label"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="export.js"></script>
+</body>
+</html>

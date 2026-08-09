@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent — Human vs LLM Moral Alignment</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>Human ↔ LLM Moral Alignment</h1>
+      <p class="subtitle">Score moral scenarios for Action and Consequence valence across one or more models.</p>
+    </header>
+
+    <nav class="site-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="single.html">Single Scenario</a>
+      <a href="dataset.html">Full Dataset</a>
+      <a href="export.html">Per-Model Export</a>
+      <a href="agent.html" class="active">Agent</a>
+    </nav>
+
+    <section class="card">
+      <h2>General-Purpose Agent</h2>
+      <p class="hint">
+        A real LLM (Gemini) with access to every tool, resource, and prompt on this project's
+        MCP server. Give it a free-form instruction — it decides for itself which tools to call
+        and in what order. Nothing here is a fixed script; the sequencing you see in the activity
+        log below is the agent's own decision, made live.
+      </p>
+      <p class="hint">
+        Examples: <em>"Export the entire dataset for claude, then show me its alignment metrics."</em> ·
+        <em>"Evaluate this scenario with gemini and claude: Is it wrong to lie to protect a friend's feelings?"</em> ·
+        <em>"Compare current vs few_shot prompt versions for gemini on a fixed sample of 15."</em>
+      </p>
+
+      <label for="agent-instruction-input">Instruction</label>
+      <textarea id="agent-instruction-input" rows="4" placeholder="Tell the agent what you want done — it will decide which MCP tools to call."></textarea>
+
+      <div class="actions">
+        <button id="run-agent-btn" class="btn primary">Run Agent</button>
+        <button id="download-agent-csv-btn" class="btn secondary" disabled>Download CSV</button>
+        <span id="agent-status" class="status"></span>
+      </div>
+
+      <div id="agent-log-wrap" hidden>
+        <div class="agent-log-header">
+          <span>Agent activity</span>
+          <span class="hint">Which MCP tools the agent is calling, live — its own decision, not a script</span>
+        </div>
+        <div id="agent-log" class="agent-log"></div>
+      </div>
+
+      <div id="agent-report" class="agent-report" hidden></div>
+    </section>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="agent.js"></script>
+</body>
+</html>

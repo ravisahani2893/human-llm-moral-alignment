@@ -23,16 +23,22 @@ from app.evaluator import MODEL_CLIENTS, evaluate_single
 OUTPUT_DIR = Path("outputs")
 
 
+def export_output_path(model: str, prompt_version: str = "current") -> Path:
+    suffix = "" if prompt_version == "current" else f"_{prompt_version}"
+    return OUTPUT_DIR / f"output_{model.replace('/', '_')}{suffix}_entire_dataset.csv"
+
+
 def export_model_dataset(
     model: str,
     limit: int | None = None,
     resume: bool = True,
     on_progress=None,
+    prompt_version: str = "current",
 ) -> Path:
     if model not in MODEL_CLIENTS:
         raise ValueError(f"Unknown model {model!r}. Expected one of {list(MODEL_CLIENTS.keys())}")
 
-    out_path = OUTPUT_DIR / f"output_{model.replace('/', '_')}_entire_dataset.csv"
+    out_path = export_output_path(model, prompt_version)
     df = load_dataset()
     if limit:
         df = df.head(limit)
@@ -47,14 +53,14 @@ def export_model_dataset(
         print(f"[export] resuming {model!r}: {len(done_ids)} scenarios already done", file=sys.stderr)
 
     remaining = df[~df["ID"].isin(done_ids)]
-    print(f"[export] model={model!r}, total={total}, remaining={len(remaining)}", file=sys.stderr)
+    print(f"[export] model={model!r}, prompt_version={prompt_version!r}, total={total}, remaining={len(remaining)}", file=sys.stderr)
 
     action_col = f"{model}_action"
     consequences_col = f"{model}_consequences"
 
     for i, (_, row) in enumerate(remaining.iterrows(), start=1):
         try:
-            prediction = evaluate_single(row["input_sequence"], model=model)
+            prediction = evaluate_single(row["input_sequence"], model=model, prompt_version=prompt_version)
             new_row = {
                 "ID": row["ID"],
                 "Scenario": row["input_sequence"],
@@ -89,9 +95,10 @@ def main():
     parser.add_argument("--model", required=True, help=f"Model key: {list(MODEL_CLIENTS.keys())}")
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N scenarios (for testing)")
     parser.add_argument("--no-resume", action="store_true", help="Start fresh instead of resuming a partial run")
+    parser.add_argument("--prompt-version", default="current", help="Prompt version to use (e.g. current, few_shot, v1, v2)")
     args = parser.parse_args()
 
-    export_model_dataset(args.model, limit=args.limit, resume=not args.no_resume)
+    export_model_dataset(args.model, limit=args.limit, resume=not args.no_resume, prompt_version=args.prompt_version)
 
 
 if __name__ == "__main__":

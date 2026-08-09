@@ -6,12 +6,13 @@ from app.dataset import load_dataset
 from app import evals
 from app.jobs import OUTPUT_DIR, get_job, list_jobs, start_job
 from app.export_jobs import get_export_job, list_export_jobs, start_export_job
-from app.models import ExportJobSnapshot, JobSnapshot, MoralValenceResponse
+from app.models import ExportJobSnapshot, JobSnapshot, ModelAlignmentReport, MoralValenceResponse
 from app.prompt_versions import available_versions
 from app.prompts import build_prompt
 
 from app.evaluator import (
     MODEL_LABELS,
+    evaluate_alignment,
     evaluate_single,
     evaluate_random,
     evaluate_dataset as evaluate_complete_dataset,
@@ -95,26 +96,32 @@ async def start_multi_model_evaluation(
 
 
 @mcp.tool()
-async def start_dataset_export(model: str, ctx: Context = None) -> ExportJobSnapshot:
+async def start_dataset_export(model: str, prompt_version: str = "current", ctx: Context = None) -> ExportJobSnapshot:
     """
     Start a background export of one model's raw predictions on the ENTIRE
-    dataset to outputs/output_<model>_entire_dataset.csv — no human
-    comparison columns, just ID, Scenario, {model}_action,
-    {model}_consequences, action_reasoning, consequences_reasoning. Meant
-    as raw input for metrics computed separately later, once paired with
-    human labels.
+    dataset to outputs/output_<model>_entire_dataset.csv (or
+    outputs/output_<model>_<prompt_version>_entire_dataset.csv when
+    prompt_version isn't "current") — no human comparison columns, just ID,
+    Scenario, {model}_action, {model}_consequences, action_reasoning,
+    consequences_reasoning. Meant as raw input for metrics computed
+    separately later, once paired with human labels.
 
     Returns immediately with a job id — does NOT wait for the run to finish
     (a full 500-scenario run takes many minutes). Progressive and resumable:
-    if a prior export for this model already exists, only the remaining
-    scenarios are processed, so this is always safe to call again after an
-    interruption.
+    if a prior export for this model+prompt_version already exists, only the
+    remaining scenarios are processed, so this is always safe to call again
+    after an interruption.
 
     model must be one of: "gemini", "lama", "deep-seek", "gpt-github", "claude".
+    prompt_version must be one of the values returned by list_prompt_versions
+    (typically "v1", "v2", "few_shot", "current"). Using a non-"current"
+    version writes to a separate file, so it never overwrites/mixes with an
+    existing "current" export for the same model — this is how few-shot vs.
+    zero-shot runs for the same model are kept directly comparable.
     Poll get_export_status(job_id) until status is "completed".
     """
-    await ctx.info(f"start_dataset_export called with model={model!r}")
-    job = start_export_job(model=model)
+    await ctx.info(f"start_dataset_export called with model={model!r}, prompt_version={prompt_version!r}")
+    job = start_export_job(model=model, prompt_version=prompt_version)
     return ExportJobSnapshot(**job.snapshot())
 
 
@@ -137,6 +144,31 @@ async def list_recent_exports(ctx: Context = None) -> list[ExportJobSnapshot]:
     """List all known dataset export jobs (most recent first), across processes."""
     await ctx.info("list_recent_exports called")
     return [ExportJobSnapshot(**snap) for snap in list_export_jobs()]
+
+
+@mcp.tool()
+async def compute_alignment_metrics(
+    model: str,
+    prompt_version: str = "current",
+    ctx: Context = None,
+) -> ModelAlignmentReport:
+    """
+    Compute how well one model's predictions align with your human
+    annotations — Lin's CCC (primary metric, matching the source paper),
+    MAE, RMSE, Pearson, and Spearman correlation, computed independently
+    for action and consequence valence. Reads the raw per-model export CSV
+    (outputs/output_<model>[_<prompt_version>]_entire_dataset.csv, produced
+    by start_dataset_export) and merges it against the human-annotated
+    dataset by scenario ID.
+
+    model must be one of: "gemini", "lama", "deep-seek", "gpt-github", "claude".
+    prompt_version must match an export that has actually been run for this
+    model (see list_prompt_versions / start_dataset_export / list_recent_exports)
+    — typically "current" or "few_shot". Raises if that export doesn't exist yet.
+    """
+    await ctx.info(f"compute_alignment_metrics called with model={model!r}, prompt_version={prompt_version!r}")
+    report = evaluate_alignment(model, prompt_version=prompt_version)
+    return ModelAlignmentReport(**report)
 
 
 @mcp.tool()
@@ -285,6 +317,21 @@ def moral_valence_scoring_rubric(scenario: str = "") -> str:
     methodology exactly rather than approximating it.
     """
     return build_prompt(scenario or "{scenario text goes here}")
+
+
+@mcp.prompt()
+def few_shot_scoring_rubric(scenario: str = "") -> str:
+    """
+    The exact few-shot rubric/prompt (10 worked examples of real
+    human-labeled scenarios, valence scores only — no reasoning) used to
+    score action and consequence moral valence, for the same reproducibility
+    reason as moral_valence_scoring_rubric. Corresponds to prompt_version
+    "few_shot" in start_dataset_export / compute_alignment_metrics.
+    """
+    from app.prompt_versions import get_prompt_builder
+
+    builder = get_prompt_builder("few_shot")
+    return builder(scenario or "{scenario text goes here}")
 
 
 if __name__ == "__main__":

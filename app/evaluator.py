@@ -17,7 +17,7 @@ from scipy.stats import pearsonr, spearmanr
 MODEL_CLIENTS = {
     "gemini": lambda prompt: ask_gemini(prompt),
     "lama": lambda prompt: ask_groq(prompt, model="llama-3.3-70b-versatile"),
-    "deep-seek": lambda prompt: ask_deepseek(prompt, model="deepseek-chat"),
+    "deep-seek": lambda prompt: ask_deepseek(prompt, model="deepseek-v4-pro"),
     "gpt-github": lambda prompt: ask_openai(prompt, model="gpt-4.1"),
     "claude": lambda prompt: ask_claude(prompt),
 }
@@ -25,7 +25,7 @@ MODEL_CLIENTS = {
 MODEL_LABELS = {
     "gemini": "Gemini 2.5 Flash",
     "lama": "Llama 3.3 70B",
-    "deep-seek": "DeepSeek V3",
+    "deep-seek": "DeepSeek V4 Pro",
     "gpt-github": "GPT-4.1",
     "claude": "Claude Sonnet 5",
 }
@@ -188,57 +188,39 @@ def evaluate_dataset(model: str = "gemini"):
     }
 
 
-def evaluate_alignment(model_name: str):
+def evaluate_alignment(model_name: str, prompt_version: str = "current"):
     """
     Evaluate the alignment of a model's predictions with human annotations
-    using Lin's Concordance Correlation Coefficient (CCC).
+    using Lin's Concordance Correlation Coefficient (CCC), MAE, RMSE,
+    Pearson, and Spearman — merged by scenario ID (not positional order),
+    so a partial or resumed export file can never silently misalign human
+    and model scores against each other.
     """
-    
+    if model_name not in MODEL_CLIENTS:
+        raise ValueError(f"Unsupported model: {model_name!r}. Expected one of {list(MODEL_CLIENTS.keys())}")
+
     df = load_dataset()
-    predictions = []
 
-    # Load output file to evaluate model predictions against human annotations
-    # Load file from outputs/{model_name}_predictions.csv
-    output_file = f"outputs/output_{model_name.replace('/', '_')}_entire_dataset.csv"
+    suffix = "" if prompt_version == "current" else f"_{prompt_version}"
+    output_file = f"outputs/output_{model_name.replace('/', '_')}{suffix}_entire_dataset.csv"
     print(f"Loading predictions from {output_file}")
-
 
     try:
         df_predictions = pd.read_csv(output_file)
     except FileNotFoundError:
-        raise FileNotFoundError(f"Predictions file not found: {output_file}. Please run evaluate_dataset first.")
+        raise FileNotFoundError(f"Predictions file not found: {output_file}. Please run the export for this model/prompt_version first.")
 
-    # Extract human and model scores
-    human_action_valence = df["Action_Valence"].tolist()
-    human_consequence_valence = df["Consequence_Valence"].tolist()
-    
+    action_col = f"{model_name}_action"
+    consequence_col = f"{model_name}_consequences"
 
-    if model_name == "gemini":
-        model_action_valence = df_predictions["gemini_action"].tolist()
-        model_consequence_valence = df_predictions["gemini_consequences"].tolist()
-    elif model_name == "lama":
-        model_action_valence = df_predictions["lama_action"].tolist()
-        model_consequence_valence = df_predictions["lama_consequences"].tolist()        
-    elif model_name == "deep-seek":
-        model_action_valence = df_predictions["deepseek_action"].tolist()
-        model_consequence_valence = df_predictions["deepseek_consequences"].tolist()
-    elif model_name == "gpt-github":
-        model_action_valence = df_predictions["gpt-github_action"].tolist()
-        model_consequence_valence = df_predictions["gpt-github_consequences"].tolist()
-    elif model_name == "claude":
-        model_action_valence = df_predictions["claude_action"].tolist()
-        model_consequence_valence = df_predictions["claude_consequences"].tolist()
-    else:
-        raise ValueError(f"Unsupported model: {model_name!r}. Expected one of {list(MODEL_CLIENTS.keys())}")
+    merged = df[["ID", "Action_Valence", "Consequence_Valence"]].merge(
+        df_predictions[["ID", action_col, consequence_col]], on="ID", how="inner"
+    ).dropna(subset=[action_col, consequence_col])
 
-
-    # Calculate MAE for action and consequence valence
-    action_mae = calculate_mae(human_action_valence, model_action_valence)
-    consequence_mae = calculate_mae(human_consequence_valence, model_consequence_valence)
-
-    # Calculate RMSE for action and consequence valence
-    action_rmse = calculate_rmse(human_action_valence, model_action_valence)
-    consequence_rmse = calculate_rmse(human_consequence_valence, model_consequence_valence)
+    human_action_valence = merged["Action_Valence"].tolist()
+    human_consequence_valence = merged["Consequence_Valence"].tolist()
+    model_action_valence = merged[action_col].tolist()
+    model_consequence_valence = merged[consequence_col].tolist()
 
     action_results = {
         "ccc": calculate_ccc(human_action_valence, model_action_valence),
@@ -258,6 +240,8 @@ def evaluate_alignment(model_name: str):
 
     return {
         "model": model_name,
+        "prompt_version": prompt_version,
+        "n_scenarios": len(merged),
         "action_results": action_results,
         "consequence_results": consequence_results,
     }

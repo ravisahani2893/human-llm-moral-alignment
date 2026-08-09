@@ -10,6 +10,12 @@ from app.prompt_versions import available_versions
 FIXED_SAMPLE_SIZE = 30
 FIXED_SAMPLE_SEED = 42
 
+# Scenario IDs used as worked examples in app/prompts/few_shot.txt. Excluded
+# from the fixed evaluation sample here (not just by seed luck) so the
+# few_shot prompt version is never evaluated on scenarios it was shown the
+# answer to — regardless of future changes to sample size/seed.
+FEW_SHOT_EXAMPLE_IDS = {918029, 449683, 37563, 833314, 402529, 507964, 934149, 915520, 356665, 209012}
+
 
 def _axis_metrics(human: pd.Series, predicted: pd.Series) -> dict:
     """
@@ -64,6 +70,7 @@ def fixed_sample_ids(size: int = FIXED_SAMPLE_SIZE, seed: int = FIXED_SAMPLE_SEE
     version.
     """
     df = load_dataset()
+    df = df[~df["ID"].isin(FEW_SHOT_EXAMPLE_IDS)]
     sample = df.sample(n=min(size, len(df)), random_state=seed)
     return sample["ID"].tolist()
 

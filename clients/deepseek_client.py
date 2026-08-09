@@ -17,7 +17,7 @@ def _get_client():
     return _client
 
 
-def ask_deepseek(prompt: str, model: str = "deepseek-chat"):
+def ask_deepseek(prompt: str, model: str = "deepseek-v4-pro"):
     print(f"[deepseek_client] calling DeepSeek with model={model!r}", file=sys.stderr)
 
     while True:

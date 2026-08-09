@@ -22,6 +22,7 @@ def _load_versioned_builder(filename: str):
 _VERSION_BUILDERS = {
     "v1": _load_versioned_builder("v1.txt"),
     "v2": _load_versioned_builder("v2.txt"),
+    "few_shot": _load_versioned_builder("few_shot.txt"),
     "current": _current_build_prompt,
 }
 

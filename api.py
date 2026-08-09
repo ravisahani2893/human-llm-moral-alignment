@@ -1,4 +1,3 @@
-import re
 import sys
 from pathlib import Path
 
@@ -14,6 +13,7 @@ from app.dataset import load_dataset
 from app.evaluator import MODEL_CLIENTS, MODEL_LABELS, evaluate_models_for_scenario
 from app.export_jobs import get_export_job, list_export_jobs
 from app.jobs import get_job, list_jobs, start_job
+from app.prompt_versions import available_versions
 
 app = FastAPI(title="Human LLM Moral Alignment API")
 
@@ -42,13 +42,11 @@ class BatchJobRequest(BaseModel):
 
 class ExportJobRequest(BaseModel):
     model: str
+    prompt_version: str = "current"
 
 
 class AgentRunRequest(BaseModel):
-    mode: str  # "scenario" | "random" | "all"
-    models: list[str]
-    scenario: str | None = None
-    sample_size: int | None = None
+    instruction: str
 
 
 def _validate_models(models: list[str]):
@@ -114,6 +112,11 @@ def job_results(job_id: str):
     return {"rows": job.rows_snapshot()}
 
 
+@app.get("/api/prompt-versions")
+def prompt_versions_list():
+    return available_versions()
+
+
 @app.get("/api/exports")
 def exports_list():
     return {"exports": list_export_jobs()}
@@ -130,7 +133,12 @@ def create_export(req: ExportJobRequest):
     on-disk job state directly, so they don't need to go through MCP too.
     """
     _validate_models([req.model])
-    return mcp_client.call_tool("start_dataset_export", {"model": req.model})
+    if req.prompt_version not in available_versions():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown prompt_version {req.prompt_version!r}. Available: {available_versions()}",
+        )
+    return mcp_client.call_tool("start_dataset_export", {"model": req.model, "prompt_version": req.prompt_version})
 
 
 @app.get("/api/exports/{job_id}")
@@ -173,20 +181,15 @@ def job_csv(job_id: str):
 
 @app.post("/api/agent/runs")
 def agent_run_create(req: AgentRunRequest):
-    if req.mode not in ("scenario", "random", "all"):
-        raise HTTPException(status_code=400, detail="mode must be one of: scenario, random, all")
-    _validate_models(req.models)
-    if req.mode == "scenario" and not (req.scenario and req.scenario.strip()):
-        raise HTTPException(status_code=400, detail="scenario text is required for mode='scenario'.")
-    if req.mode == "random" and not (req.sample_size and req.sample_size > 0):
-        raise HTTPException(status_code=400, detail="a positive sample_size is required for mode='random'.")
-
-    run = start_agent_run(
-        mode=req.mode,
-        models=req.models,
-        scenario=req.scenario,
-        sample_size=req.sample_size,
-    )
+    """
+    Start the general-purpose MCP agent with a free-form instruction — the
+    agent (Gemini, calling this project's MCP server tools) decides for
+    itself which tools to call and in what order, unlike every other
+    endpoint here which triggers one fixed, pre-scripted action.
+    """
+    if not req.instruction or not req.instruction.strip():
+        raise HTTPException(status_code=400, detail="instruction text is required.")
+    run = start_agent_run(instruction=req.instruction.strip())
     return run.snapshot()
 
 
@@ -203,38 +206,22 @@ def agent_run_status(run_id: str):
     return run
 
 
-def _underlying_job_id(run: dict) -> str | None:
-    if not run.get("csv_path"):
-        return None
-    match = re.search(r"job_([0-9a-f]+)\.csv$", run["csv_path"])
-    return match.group(1) if match else None
-
-
-@app.get("/api/agent/runs/{run_id}/results")
-def agent_run_results(run_id: str):
-    run = get_agent_run(run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="Agent run not found.")
-    job_id = _underlying_job_id(run)
-    if job_id is None:
-        return {"rows": []}
-    job = get_job(job_id)
-    if job is None:
-        return {"rows": []}
-    return {"rows": job.rows_snapshot()}
-
-
 @app.get("/api/agent/runs/{run_id}/csv")
 def agent_run_csv(run_id: str):
+    """
+    Download whatever CSV (if any) the agent's tool calls produced during
+    this run — could be a batch-job comparison CSV or a per-model export
+    CSV, depending what the agent decided to do; the run's own csv_path
+    already points at the right file either way.
+    """
     run = get_agent_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Agent run not found.")
-    job_id = _underlying_job_id(run)
-    job = get_job(job_id) if job_id else None
-    if job is None or not job.csv_path.exists():
-        raise HTTPException(status_code=404, detail="No comparison CSV available for this run.")
+    csv_path = run.get("csv_path")
+    if not csv_path or not Path(csv_path).exists():
+        raise HTTPException(status_code=404, detail="No CSV was produced by this run.")
     return FileResponse(
-        job.csv_path,
+        csv_path,
         media_type="text/csv",
         filename=f"agent_run_{run_id}.csv",
     )

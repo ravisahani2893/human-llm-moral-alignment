@@ -34,6 +34,7 @@ class Job:
         self.status = "running"  # running | completed | error
         self.error = None
         self.created_at = time.time()
+        self.updated_at = self.created_at
         self.lock = threading.Lock()
         self.rows: dict[int, dict] = {}  # ID -> combined row
         self.total = 0
@@ -54,10 +55,12 @@ class Job:
                 "completed_per_model": dict(self.completed_per_model),
                 "errors_per_model": dict(self.errors_per_model),
                 "created_at": self.created_at,
+                "updated_at": self.updated_at,
                 "csv_path": str(self.csv_path),
             }
 
     def write_status(self):
+        self.updated_at = time.time()
         OUTPUT_DIR.mkdir(exist_ok=True)
         with open(_status_path(self.id), "w") as f:
             json.dump(self.snapshot(), f)

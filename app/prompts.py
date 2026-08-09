@@ -16,6 +16,12 @@ Definitions:
 
 • Consequence Moral Valence refers ONLY to the morality of the consequence or outcome resulting from that action, regardless of whether the action itself was morally right or wrong.
 
+Additional Constraints:
+
+• When evaluating Action Moral Valence, consider only the morality of the action itself. Do not consider outcomes or consequences.
+
+• When evaluating Consequence Moral Valence, consider only the morality of the resulting outcome. Do not consider whether the original action was morally justified.
+
 Use a continuous numerical scale from -1.0 (extremely morally negative)
 through 0.0 (morally neutral) to +1.0 (extremely morally positive).
 
@@ -37,28 +43,17 @@ Important Instructions:
 Examples of the level of precision expected: -0.87, -0.62, -0.41, -0.19,
 0.08, 0.33, 0.57, 0.79, 0.94.
 
-In addition to each score, provide:
-
-• A short reasoning (1-2 sentences) explaining why you assigned that score,
-  written for someone who cannot see the scenario and needs the score
-  justified on its own.
-• A list of 2-4 short key factors (a few words each, not full sentences)
-  that most influenced that score.
-
 Return ONLY a valid JSON object.
 
 Do not include markdown.
 Do not include any additional text outside the JSON object.
+Do not include reasoning or explanations — scores only.
 
 JSON format:
 
 {{
     "action_valence": <float between -1.0 and 1.0>,
-    "action_reasoning": "<1-2 sentence justification>",
-    "action_factors": ["<short factor>", "<short factor>"],
-    "consequence_valence": <float between -1.0 and 1.0>,
-    "consequence_reasoning": "<1-2 sentence justification>",
-    "consequence_factors": ["<short factor>", "<short factor>"]
+    "consequence_valence": <float between -1.0 and 1.0>
 }}
 
 Situation:

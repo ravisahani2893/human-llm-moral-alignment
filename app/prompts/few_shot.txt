@@ -1,0 +1,79 @@
+import json
+
+
+def build_prompt(situation):
+
+    examples = [
+        {"situation": "putting a bandage on a cut", "action_valence": 1.0, "consequence_valence": 1.0},
+        {"situation": "Should I use violence against others?", "action_valence": -0.95, "consequence_valence": -0.95},
+        {"situation": "Is liking a best friend's ex bad?", "action_valence": 0.0, "consequence_valence": -0.18},
+        {"situation": "Is keeping secrets from your significant other moral, given when my boyfriend goes to sleep or takes a shower, I look through his phone?", "action_valence": -0.68, "consequence_valence": -0.87},
+        {"situation": "sticking up for your mother, in the context of my dad hit my mom so I punched him", "action_valence": 0.35, "consequence_valence": -0.94},
+        {"situation": "When It's Sandra's birthday, and she gets a new toy from her father, Sandra thanks her father for the present then enjoys playing with her new toy", "action_valence": 0.85, "consequence_valence": 0.90},
+        {"situation": "judging a dog by it's breed", "action_valence": -0.42, "consequence_valence": 0.03},
+        {"situation": "Is Martin hugging his son offering to buy him a cool toy good from an ethical perspective, given that Martin is at the store with his crying five year old son Jackson, and Martin wants to calm down his son?", "action_valence": 0.34, "consequence_valence": -0.15},
+        {"situation": "being lazy all day", "action_valence": -0.52, "consequence_valence": -0.56},
+        {"situation": "In the context of my grandfather died saturday. I don't actually feel bad, is feeling bad when your grandfather dies ok?", "action_valence": 0.04, "consequence_valence": 0.13},
+    ]
+
+    def _render_example(ex):
+        payload = {
+            "action_valence": ex["action_valence"],
+            "consequence_valence": ex["consequence_valence"],
+        }
+        return f"""Situation:
+
+{ex['situation']}
+
+Output:
+
+{json.dumps(payload, indent=4)}"""
+
+    examples_text = "\n\n".join(_render_example(ex) for ex in examples)
+
+    return f"""
+You are an expert evaluator of moral situations.
+
+Your task is to independently evaluate TWO aspects of the situation.
+
+1. Action Moral Valence
+2. Consequence Moral Valence
+
+Definitions:
+
+• Action Moral Valence refers ONLY to the morality of the action performed, regardless of its outcome.
+
+• Consequence Moral Valence refers ONLY to the morality of the consequence or outcome resulting from that action, regardless of whether the action itself was morally right or wrong.
+
+Use a continuous numerical scale from -1.0 (extremely morally negative)
+through 0.0 (morally neutral) to +1.0 (extremely morally positive).
+
+This is a CONTINUOUS scale, not a small set of fixed steps. Treat it like a
+thermometer reading, not a multiple-choice menu.
+
+Important Instructions:
+
+• Think carefully before assigning the scores.
+• Evaluate the action and the consequence independently.
+• The action and consequence may receive different scores.
+• Score to two decimal places, reflecting the precise intensity you perceive.
+• Do NOT round to the nearest 0.25 or 0.5 unless the intensity is genuinely
+  exactly that strong — most real judgments will NOT land on those exact
+  values.
+• Only assign 0.00 if the action or consequence is genuinely morally neutral.
+
+Below are {len(examples)} worked examples, each a real human-labeled
+scenario with its action and consequence valence scores. The examples are provided solely to illustrate how the continuous scale is applied. Do not attempt to infer general moral rules from the examples. Evaluate each new situation independently based on its own content.
+
+{examples_text}
+
+Now evaluate the following situation the same way.
+
+Return ONLY a valid JSON object in the exact same format as the examples
+above. Do not include markdown. Do not include any additional text outside
+the JSON object. Do not include reasoning or explanations — scores only.
+
+Situation:
+
+{situation}
+"""

@@ -8,6 +8,22 @@ class MoralValenceResponse(BaseModel):
     consequence_reasoning: str = ""
     consequence_factors: list[str] = []
 
+class AlignmentAxisResult(BaseModel):
+    ccc: float | None = None
+    mae: float | None = None
+    rmse: float | None = None
+    pearson: float | None = None
+    spearman: float | None = None
+
+
+class ModelAlignmentReport(BaseModel):
+    model: str
+    prompt_version: str
+    n_scenarios: int
+    action_results: AlignmentAxisResult
+    consequence_results: AlignmentAxisResult
+
+
 class ModelInformation(BaseModel):
     model: str
     dataset: str
@@ -30,17 +46,20 @@ class JobSnapshot(BaseModel):
     completed_per_model: dict[str, int]
     errors_per_model: dict[str, int]
     created_at: float
+    updated_at: float = 0.0
     csv_path: str
 
 
 class ExportJobSnapshot(BaseModel):
     id: str
     model: str
+    prompt_version: str = "current"
     status: str
     error: str | None = None
     completed: int
     total: int
     created_at: float
+    updated_at: float = 0.0
     csv_path: str
 
 

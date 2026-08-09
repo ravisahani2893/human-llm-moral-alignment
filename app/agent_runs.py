@@ -5,8 +5,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agents.divergence_analyst import build_task, extract_csv_path, extract_scenario_evaluations, run_agent
-from app.dataset import load_dataset
+from agents.general_agent import extract_csv_path, run_agent
 
 OUTPUT_DIR = Path("outputs") / "agent_runs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -18,40 +17,16 @@ def _status_path(run_id: str) -> Path:
     return OUTPUT_DIR / f"run_{run_id}.status.json"
 
 
-def lookup_human_labels(scenario: str) -> dict | None:
-    """
-    If the given scenario text exactly matches a row in the labeled
-    dataset, return its human gold-standard labels — lets single-scenario
-    mode show a real human-vs-model comparison instead of only comparing
-    models against each other, whenever the demo scenario happens to be
-    (or is deliberately chosen to be) one from the dataset.
-    """
-    df = load_dataset()
-    match = df[df["input_sequence"].str.strip() == scenario.strip()]
-    if match.empty:
-        return None
-    row = match.iloc[0]
-    return {
-        "ID": int(row["ID"]),
-        "Human_Action": float(row["Action_Valence"]),
-        "Human_Consequence": float(row["Consequence_Valence"]),
-    }
-
-
 class AgentRun:
-    def __init__(self, mode: str, models: list[str], scenario: str | None, sample_size: int | None):
+    def __init__(self, instruction: str):
         self.id = uuid.uuid4().hex[:12]
-        self.mode = mode
-        self.models = models
-        self.scenario = scenario
-        self.sample_size = sample_size
+        self.instruction = instruction
         self.status = "running"  # running | completed | error
         self.error: str | None = None
         self.report: str | None = None
         self.csv_path: str | None = None
-        self.scenario_evaluations: list[dict] = []
-        self.human_reference: dict | None = None
         self.created_at = time.time()
+        self.updated_at = self.created_at
         self.log: list[dict] = []
         self.lock = threading.Lock()
 
@@ -64,29 +39,26 @@ class AgentRun:
         with self.lock:
             return {
                 "id": self.id,
-                "mode": self.mode,
-                "models": self.models,
-                "scenario": self.scenario,
-                "sample_size": self.sample_size,
+                "instruction": self.instruction,
                 "status": self.status,
                 "error": self.error,
                 "report": self.report,
                 "csv_path": self.csv_path,
-                "scenario_evaluations": list(self.scenario_evaluations),
-                "human_reference": self.human_reference,
                 "created_at": self.created_at,
+                "updated_at": self.updated_at,
                 "log": list(self.log),
             }
 
     def write_status(self):
+        self.updated_at = time.time()
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         with open(_status_path(self.id), "w") as f:
             json.dump(self.snapshot(), f)
 
 
-def _run(agent_run: AgentRun, task: str):
+def _run(agent_run: AgentRun, instruction: str):
     try:
-        report, transcript = asyncio.run(run_agent(task, on_step=agent_run.append_log))
+        report, transcript = asyncio.run(run_agent(instruction, on_step=agent_run.append_log))
         csv_path = extract_csv_path(transcript)
 
         transcript_path = OUTPUT_DIR / f"run_{agent_run.id}.transcript.json"
@@ -96,8 +68,6 @@ def _run(agent_run: AgentRun, task: str):
         with agent_run.lock:
             agent_run.report = report
             agent_run.csv_path = csv_path
-            if agent_run.mode == "scenario":
-                agent_run.scenario_evaluations = extract_scenario_evaluations(transcript)
             agent_run.status = "error" if report.startswith("(Agent stopped") else "completed"
     except Exception as exc:
         with agent_run.lock:
@@ -107,21 +77,12 @@ def _run(agent_run: AgentRun, task: str):
         agent_run.write_status()
 
 
-def start_agent_run(
-    mode: str,
-    models: list[str],
-    scenario: str | None = None,
-    sample_size: int | None = None,
-) -> AgentRun:
-    human_reference = lookup_human_labels(scenario) if mode == "scenario" and scenario else None
-    task = build_task(mode, models, scenario=scenario, sample_size=sample_size, human_reference=human_reference)
-
-    agent_run = AgentRun(mode=mode, models=models, scenario=scenario, sample_size=sample_size)
-    agent_run.human_reference = human_reference
+def start_agent_run(instruction: str) -> AgentRun:
+    agent_run = AgentRun(instruction=instruction)
     _runs[agent_run.id] = agent_run
     agent_run.write_status()
 
-    thread = threading.Thread(target=_run, args=(agent_run, task), daemon=True)
+    thread = threading.Thread(target=_run, args=(agent_run, instruction), daemon=True)
     thread.start()
     return agent_run
 
