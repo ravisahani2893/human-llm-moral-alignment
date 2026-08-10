@@ -3,8 +3,8 @@ import statistics
 import pandas as pd
 
 from app.dataset import load_dataset
-from app.evaluator import calculate_mae, calculate_pearson, calculate_rmse, calculate_spearman, evaluate_single
-from app.metric_v1 import calculate_ccc
+from app.evaluator import evaluate_single
+from app.metric import calculate_ccc, calculate_mae, calculate_pearson, calculate_rmse, calculate_spearman
 from app.prompt_versions import available_versions
 
 FIXED_SAMPLE_SIZE = 30
@@ -20,8 +20,8 @@ FEW_SHOT_EXAMPLE_IDS = {918029, 449683, 37563, 833314, 402529, 507964, 934149, 9
 def _axis_metrics(human: pd.Series, predicted: pd.Series) -> dict:
     """
     Alignment metrics between one axis of human labels and one axis of
-    model predictions, built on app.evaluator's calculate_* functions and
-    metric_v1.calculate_ccc (replaces the retired app.metrics module).
+    model predictions, built on app.metric's calculate_* functions
+    (replaces the retired app.metrics module).
     """
     human = pd.Series(human).astype(float)
     predicted = pd.Series(predicted).astype(float)

@@ -1,6 +1,4 @@
-from app.metric_v1 import calculate_ccc
-
-from app.metric_v1 import calculate_ccc
+from app.metric import calculate_ccc
 
 
 def test_perfect_match():

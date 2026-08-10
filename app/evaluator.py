@@ -1,18 +1,16 @@
 import json
 import sys
-import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from app.dataset import load_dataset, sample_random, save_predictions
 from app.interpret import valence_label
-from app.metric_v1 import calculate_ccc
+from app.metric import calculate_ccc, calculate_mae, calculate_pearson, calculate_rmse, calculate_spearman
 from app.prompts import build_prompt
 from clients.claude_client import ask_claude
 from clients.deepseek_client import ask_deepseek
 from clients.gemini_client import ask_gemini
 from clients.groq_client import ask_groq
 from clients.openai_client import ask_openai
-from scipy.stats import pearsonr, spearmanr
 
 MODEL_CLIENTS = {
     "gemini": lambda prompt: ask_gemini(prompt),
@@ -247,122 +245,3 @@ def evaluate_alignment(model_name: str, prompt_version: str = "current"):
     }
 
 
-def calculate_mae(human_scores, model_scores):
-    """
-    Calculate Mean Absolute Error (MAE).
-
-    Parameters
-    ----------
-    human_scores : array-like
-        Human annotations.
-
-    model_scores : array-like
-        Model predictions.
-
-    Returns
-    -------
-    float
-        Mean Absolute Error.
-    """
-
-    human = np.asarray(human_scores, dtype=float)
-    model = np.asarray(model_scores, dtype=float)
-
-    if len(human) != len(model):
-        raise ValueError(
-            "Human and model arrays must have the same length."
-        )
-
-    return np.mean(np.abs(human - model))
-
-
-def calculate_rmse(human_scores, model_scores):
-    """
-    Calculate Root Mean Squared Error (RMSE).
-
-    Parameters
-    ----------
-    human_scores : array-like
-        Human annotations.
-
-    model_scores : array-like
-        Model predictions.
-
-    Returns
-    -------
-    float
-        Root Mean Squared Error.
-    """
-
-    human = np.asarray(human_scores, dtype=float)
-    model = np.asarray(model_scores, dtype=float)
-
-    if len(human) != len(model):
-        raise ValueError(
-            "Human and model arrays must have the same length."
-        )
-
-    mse = np.mean((human - model) ** 2)
-
-    return np.sqrt(mse)
-
-def calculate_pearson(human_scores, model_scores):
-    """
-    Calculate Pearson Correlation Coefficient.
-
-    Parameters
-    ----------
-    human_scores : array-like
-        Human annotations.
-
-    model_scores : array-like
-        Model predictions.
-
-    Returns
-    -------
-    float
-        Pearson Correlation Coefficient.
-    """
-
-    human = np.asarray(human_scores, dtype=float)
-    model = np.asarray(model_scores, dtype=float)
-
-    if len(human) != len(model):
-        raise ValueError(
-            "Human and model arrays must have the same length."
-        )
-
-    correlation, _ = pearsonr(human, model)
-
-    return correlation
-
-
-def calculate_spearman(human_scores, model_scores):
-    """
-    Calculate Spearman Rank Correlation Coefficient.
-
-    Parameters
-    ----------
-    human_scores : array-like
-        Human annotations.
-
-    model_scores : array-like
-        Model predictions.
-
-    Returns
-    -------
-    float
-        Spearman Rank Correlation Coefficient.
-    """
-
-    human = np.asarray(human_scores, dtype=float)
-    model = np.asarray(model_scores, dtype=float)
-
-    if len(human) != len(model):
-        raise ValueError(
-            "Human and model arrays must have the same length."
-        )
-
-    correlation, _ = spearmanr(human, model)
-
-    return correlation
