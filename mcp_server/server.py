@@ -6,12 +6,23 @@ from app.dataset import load_dataset
 from app import evals
 from app.jobs import OUTPUT_DIR, get_job, list_jobs, start_job
 from app.export_jobs import get_export_job, list_export_jobs, start_export_job
-from app.models import ExportJobSnapshot, JobSnapshot, ModelAlignmentReport, MoralValenceResponse
+from app.bias_jobs import get_bias_eval_job, list_bias_eval_jobs, start_bias_eval_job
+from app.models import (
+    BiasEvalJobSnapshot,
+    CrossModelAgreementReport,
+    ExportJobSnapshot,
+    JobSnapshot,
+    ModelAlignmentReport,
+    MoralValenceResponse,
+    VariantBiasReport,
+)
 from app.prompt_versions import available_versions
 from app.prompts import build_prompt
 
 from app.evaluator import (
     MODEL_LABELS,
+    calculate_all_variant_bias,
+    calculate_cross_model_agreement,
     evaluate_alignment,
     evaluate_single,
     evaluate_random,
@@ -169,6 +180,125 @@ async def compute_alignment_metrics(
     await ctx.info(f"compute_alignment_metrics called with model={model!r}, prompt_version={prompt_version!r}")
     report = evaluate_alignment(model, prompt_version=prompt_version)
     return ModelAlignmentReport(**report)
+
+
+@mcp.tool()
+async def compute_cross_model_agreement(
+    models: list[str] | None = None,
+    prompt_version: str = "current",
+    ctx: Context = None,
+) -> CrossModelAgreementReport:
+    """
+    Cross-Model Agreement: how similarly do different LLMs evaluate the
+    SAME moral scenarios, compared ONLY against each other — NOT against
+    human annotations. This is a different question from
+    compute_alignment_metrics (Human-LLM Alignment: human annotations vs.
+    one model's predictions) and never reads Human_Action/Human_Consequence
+    or any other human-annotated column.
+
+    Computes pairwise Pearson and Spearman correlation between every pair
+    of the given models, for action valence and consequence valence
+    separately, and assembles four symmetric matrices (action/consequence
+    x pearson/spearman, diagonal 1.0) plus a flat pairwise list. Reads each
+    model's raw export CSV (produced by start_dataset_export) and merges
+    them across ALL selected models by scenario ID (never positional
+    order); any scenario missing a prediction from any selected model is
+    dropped, never filled with zero — the resulting common-scenario count
+    is reported as n_scenarios and is the same for every pair in the
+    matrix.
+
+    models must be a subset of "gemini", "lama", "deep-seek", "gpt-github",
+    "claude" — at least 2; omit to use all 5. prompt_version selects which
+    export to read for every model (an export must already exist for each
+    model at this prompt_version — see start_dataset_export /
+    list_recent_exports); typically "current" or "few_shot", and must be
+    the same version across all models being compared.
+    """
+    await ctx.info(f"compute_cross_model_agreement called with models={models}, prompt_version={prompt_version!r}")
+    report = calculate_cross_model_agreement(models=models, prompt_version=prompt_version)
+    return CrossModelAgreementReport(**report)
+
+
+@mcp.tool()
+async def start_bias_variant_eval(
+    model: str,
+    dataset: str,
+    prompt_version: str = "current",
+    ctx: Context = None,
+) -> BiasEvalJobSnapshot:
+    """
+    Start a background demographic-bias/robustness evaluation: runs one
+    model over every variant of a counterfactual perturbation dataset
+    (e.g. "GENDER": Original/Male/Female, or "ETHNICITY":
+    Original/Indian/European/American — each variant is the SAME
+    underlying moral scenario with only a name/pronoun changed) and saves
+    raw per-(scenario, variant) predictions to
+    outputs/bias_<dataset>_<model>.csv. This is a separate question from
+    both compute_alignment_metrics (human vs. model) and
+    compute_cross_model_agreement (model vs. model) — it asks whether ONE
+    model's own score for the SAME scenario shifts when demographics
+    change, and never reads Human_Action/Human_Consequence.
+
+    Returns immediately with a job id — does NOT wait for the run to
+    finish. Progressive and resumable: previously-completed (scenario,
+    variant) pairs are skipped on a re-run, and any pair that previously
+    failed (null prediction) is automatically retried at the start of the
+    next run. Poll get_bias_eval_status(job_id) until status is
+    "completed", then call compute_variant_bias.
+
+    dataset must match a file at data/variants/variants_<DATASET>.csv
+    (case-insensitive), currently "GENDER" or "ETHNICITY".
+    """
+    await ctx.info(f"start_bias_variant_eval called with model={model!r}, dataset={dataset!r}, prompt_version={prompt_version!r}")
+    job = start_bias_eval_job(model=model, dataset=dataset, prompt_version=prompt_version)
+    return BiasEvalJobSnapshot(**job.snapshot())
+
+
+@mcp.tool()
+async def get_bias_eval_status(job_id: str, ctx: Context = None) -> BiasEvalJobSnapshot:
+    """
+    Check progress of a bias-variant evaluation job started by
+    start_bias_variant_eval, including jobs started from another process
+    (status is persisted to disk, not process-local).
+    """
+    await ctx.info(f"get_bias_eval_status called with job_id={job_id!r}")
+    job = get_bias_eval_job(job_id)
+    if job is None:
+        raise ValueError(f"No bias eval job found with id {job_id!r}.")
+    return BiasEvalJobSnapshot(**job.snapshot())
+
+
+@mcp.tool()
+async def list_recent_bias_evals(ctx: Context = None) -> list[BiasEvalJobSnapshot]:
+    """List all known bias-variant evaluation jobs (most recent first), across processes."""
+    await ctx.info("list_recent_bias_evals called")
+    return [BiasEvalJobSnapshot(**snap) for snap in list_bias_eval_jobs()]
+
+
+@mcp.tool()
+async def compute_variant_bias(model: str, dataset: str, ctx: Context = None) -> VariantBiasReport:
+    """
+    Compute demographic bias/robustness results for one model on one
+    perturbation dataset: for every unique pair of variants (e.g. Male vs
+    Female, or Original vs Indian), runs a paired Wilcoxon signed-rank
+    test on the model's own action/consequence valence scores across the
+    two variants of each scenario, merged by scenario ID (never
+    positional order). Never reads human annotations — this measures
+    whether the MODEL's own output shifts with demographics, not whether
+    it matches a human judgment.
+
+    Requires start_bias_variant_eval to have completed for this
+    model/dataset first (reads outputs/bias_<dataset>_<model>.csv).
+    A low p-value (conventionally < 0.05) on an axis indicates the model's
+    scores shift systematically between those two variants; mean_delta
+    gives the direction and rough size of that shift. With small sample
+    sizes (a few dozen scenario pairs, typical for these perturbation
+    datasets), a high p-value means "no bias detected at this sample
+    size," not "proven absence of bias" — report it that way.
+    """
+    await ctx.info(f"compute_variant_bias called with model={model!r}, dataset={dataset!r}")
+    report = calculate_all_variant_bias(model=model, dataset=dataset)
+    return VariantBiasReport(**report)
 
 
 @mcp.tool()

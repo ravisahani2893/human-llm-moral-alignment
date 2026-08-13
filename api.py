@@ -12,8 +12,10 @@ from app.agent_runs import get_agent_run, list_agent_runs, start_agent_run
 from app.dataset import load_dataset
 from app.evaluator import MODEL_CLIENTS, MODEL_LABELS, evaluate_models_for_scenario
 from app.export_jobs import get_export_job, list_export_jobs
+from app.bias_jobs import get_bias_eval_job, list_bias_eval_jobs
 from app.jobs import get_job, list_jobs, start_job
 from app.prompt_versions import available_versions
+from tools.bias_variant_eval import available_variant_datasets
 
 app = FastAPI(title="Human LLM Moral Alignment API")
 
@@ -49,6 +51,27 @@ class AgentRunRequest(BaseModel):
     instruction: str
 
 
+class CrossModelAgreementRequest(BaseModel):
+    models: list[str] | None = None
+    prompt_version: str = "current"
+
+
+class AlignmentMetricsRequest(BaseModel):
+    models: list[str] | None = None
+    prompt_version: str = "current"
+
+
+class BiasEvalJobRequest(BaseModel):
+    model: str
+    dataset: str
+    prompt_version: str = "current"
+
+
+class BiasMetricsRequest(BaseModel):
+    model: str
+    dataset: str
+
+
 def _validate_models(models: list[str]):
     unknown = [m for m in models if m not in MODEL_CLIENTS]
     if unknown:
@@ -58,6 +81,15 @@ def _validate_models(models: list[str]):
         )
     if not models:
         raise HTTPException(status_code=400, detail="At least one model must be selected.")
+
+
+def _validate_dataset(dataset: str):
+    available = available_variant_datasets()
+    if dataset.upper() not in available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown bias variant dataset {dataset!r}. Available: {available}",
+        )
 
 
 @app.get("/api/models")
@@ -117,6 +149,64 @@ def prompt_versions_list():
     return available_versions()
 
 
+@app.get("/api/bias-datasets")
+def bias_datasets_list():
+    return available_variant_datasets()
+
+
+@app.get("/api/bias-evals")
+def bias_evals_list():
+    return {"evals": list_bias_eval_jobs()}
+
+
+@app.post("/api/bias-evals")
+def create_bias_eval(req: BiasEvalJobRequest):
+    """
+    Trigger a bias-variant evaluation run the same way exports are
+    triggered: a real MCP client call to start_bias_variant_eval, over the
+    persistent connection (app.mcp_client). The background thread runs
+    inside the MCP server subprocess; status is read directly from the
+    shared on-disk job state below.
+    """
+    _validate_models([req.model])
+    _validate_dataset(req.dataset)
+    if req.prompt_version not in available_versions():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown prompt_version {req.prompt_version!r}. Available: {available_versions()}",
+        )
+    return mcp_client.call_tool(
+        "start_bias_variant_eval",
+        {"model": req.model, "dataset": req.dataset, "prompt_version": req.prompt_version},
+    )
+
+
+@app.get("/api/bias-evals/{job_id}")
+def bias_eval_status(job_id: str):
+    job = get_bias_eval_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Bias eval job not found.")
+    return job.snapshot()
+
+
+@app.post("/api/bias-metrics")
+def bias_metrics(req: BiasMetricsRequest):
+    """
+    Demographic bias / robustness: does one model's own valence score for
+    the SAME scenario shift when only a name/pronoun signalling
+    gender/ethnicity changes? Paired Wilcoxon signed-rank test per variant
+    pair, per axis — never reads human annotations, and is a different
+    question from both Human-LLM Alignment and Cross-Model Agreement above.
+    Requires create_bias_eval to have completed for this model/dataset first.
+    """
+    _validate_models([req.model])
+    _validate_dataset(req.dataset)
+    try:
+        return mcp_client.call_tool("compute_variant_bias", {"model": req.model, "dataset": req.dataset})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/exports")
 def exports_list():
     return {"exports": list_export_jobs()}
@@ -139,6 +229,69 @@ def create_export(req: ExportJobRequest):
             detail=f"Unknown prompt_version {req.prompt_version!r}. Available: {available_versions()}",
         )
     return mcp_client.call_tool("start_dataset_export", {"model": req.model, "prompt_version": req.prompt_version})
+
+
+@app.post("/api/cross-model-agreement")
+def cross_model_agreement(req: CrossModelAgreementRequest):
+    """
+    Cross-Model Agreement: model-vs-model correlation only, NEVER human
+    annotations — see calculate_cross_model_agreement's docstring for the
+    full explanation of how this differs from Human-LLM Alignment. Routed
+    through the persistent MCP client (compute_cross_model_agreement tool)
+    like the export trigger above; unlike exports this is synchronous —
+    it only reads existing prediction CSVs and computes correlations, no
+    LLM calls involved, so it completes in well under a second even for
+    the full 500-scenario dataset across all 5 models.
+    """
+    models = req.models or list(MODEL_CLIENTS.keys())
+    _validate_models(models)
+    if len(models) < 2:
+        raise HTTPException(status_code=400, detail="Select at least 2 models to compare.")
+    if req.prompt_version not in available_versions():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown prompt_version {req.prompt_version!r}. Available: {available_versions()}",
+        )
+    try:
+        return mcp_client.call_tool(
+            "compute_cross_model_agreement",
+            {"models": models, "prompt_version": req.prompt_version},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/alignment-metrics")
+def alignment_metrics(req: AlignmentMetricsRequest):
+    """
+    Human-LLM Alignment: human annotations vs. each selected model's own
+    predictions — the CCC/MAE/RMSE/Pearson/Spearman story, NOT to be
+    confused with Cross-Model Agreement above (model-vs-model, no human
+    data). compute_alignment_metrics is a single-model MCP tool, so this
+    endpoint just calls it once per selected model over the same
+    persistent MCP client and assembles the reports into one response —
+    no new metric math, no duplicate pipeline. A model whose export
+    doesn't exist yet for this prompt_version reports its own error
+    instead of failing the whole request, so the rest of the table can
+    still render.
+    """
+    models = req.models or list(MODEL_CLIENTS.keys())
+    _validate_models(models)
+    if req.prompt_version not in available_versions():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown prompt_version {req.prompt_version!r}. Available: {available_versions()}",
+        )
+    results = []
+    for model in models:
+        try:
+            results.append(mcp_client.call_tool(
+                "compute_alignment_metrics",
+                {"model": model, "prompt_version": req.prompt_version},
+            ))
+        except Exception as e:
+            results.append({"model": model, "prompt_version": req.prompt_version, "error": str(e)})
+    return {"prompt_version": req.prompt_version, "models": models, "results": results}
 
 
 @app.get("/api/exports/{job_id}")

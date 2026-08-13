@@ -113,6 +113,22 @@ $$CCC = \frac{2 \cdot \text{cov}(human, model)}{\text{var}(human) + \text{var}(m
 
 **Full agreement matrix** (`full_agreement_matrix()`, via `tools/agreement_matrix.py`): the same CCC calculation run for *every pair* of raters — every model against every other model, **and every model against Human** — assembled into one symmetric table. Human here is just one more column/row using `Human_Action`/`Human_Consequence`, computed exactly as in §2.1.
 
+> **Note:** the two paragraphs above describe an earlier, now-removed module (`app/metrics.py`). The current Cross-Model Agreement implementation is described in §3a below — it never includes Human as a row/column at all (not even as "just one more"), by design.
+
+---
+
+## 3a. Cross-Model Agreement (current implementation)
+
+`calculate_cross_model_agreement()` (`app/evaluator.py`), exposed as the MCP tool `compute_cross_model_agreement`, answers a different question from Human-LLM Alignment (§1–§2): **how similarly do LLMs score the same scenarios compared to each other**, not compared to humans.
+
+- **Human annotations are never read or used.** The function loads only per-model prediction CSVs (`outputs/output_<model>[_<prompt_version>]_entire_dataset.csv`); it never calls `load_dataset()` or touches `Human_Action`/`Human_Consequence`. This is verified by a dedicated test that monkeypatches `load_dataset` to raise and confirms it's never invoked (`tools/test_cross_model_agreement.py`).
+- **Action and Consequence Valence are scored separately** — no combined figure, unlike §5's model-metrics "Combined CCC".
+- **Pearson and Spearman** (from `app/metric.py`) are computed pairwise for every unique pair among the selected models (10 pairs across all 5 models) — not CCC. Four matrices are produced: Action×Pearson, Action×Spearman, Consequence×Pearson, Consequence×Spearman.
+- **Scenario IDs, not row order**, are used to align predictions across models — an inner merge on `ID`, so a scenario is only included if every selected model has a prediction for it. `n_scenarios` in the result reports how many scenarios survived this merge; missing predictions are never filled with zero.
+- Duplicate scenario IDs in a model's prediction file raise a clear `ValueError` rather than silently duplicating rows.
+- This analysis is **complementary to, not a replacement for**, Human-LLM Alignment (§1–§2) — a high Cross-Model Agreement score says the models are self-consistent with each other; it says nothing about whether they match human moral judgment.
+- No fixed interpretation thresholds (e.g. "0.8 = high agreement") are applied — raw correlation values are reported as-is.
+
 ---
 
 ## 4. Full worked example (real data, hand-verified)

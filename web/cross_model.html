@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cross-Model Agreement — Human vs LLM Moral Alignment</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>Human ↔ LLM Moral Alignment</h1>
+      <p class="subtitle">Score moral scenarios for Action and Consequence valence across one or more models.</p>
+    </header>
+
+    <nav class="site-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="single.html">Single Scenario</a>
+      <a href="dataset.html">Full Dataset</a>
+      <a href="export.html">Per-Model Export</a>
+      <a href="human_alignment.html">Human-LLM Alignment</a>
+      <a href="cross_model.html" class="active">Cross-Model Agreement</a>
+      <a href="bias_testing.html">Bias Testing</a>
+      <a href="agent.html">Agent</a>
+    </nav>
+
+    <section class="card">
+      <h2>Cross-Model Agreement — Model vs Model</h2>
+      <p class="hint">
+        <strong>This is NOT Human–LLM Alignment.</strong> It never reads human annotations
+        (Human_Action / Human_Consequence) — it measures only how similarly the selected LLMs
+        score the <em>same</em> scenarios <strong>against each other</strong>. For "how well does
+        a model match human judgment," use <a href="export.html">Per-Model Export</a> +
+        <code>compute_alignment_metrics</code> instead (via the Agent page).
+      </p>
+
+      <label>Models to compare (at least 2)</label>
+      <div class="model-select" id="cma-model-select"></div>
+
+      <label for="cma-prompt-version-select">Prompt version</label>
+      <select id="cma-prompt-version-select"></select>
+      <p class="hint">Every selected model must already have a completed export for this prompt version.</p>
+
+      <div class="actions">
+        <button id="run-cma-btn" class="btn primary">Compute Cross-Model Agreement</button>
+        <span id="cma-status" class="status"></span>
+      </div>
+
+      <div id="cma-results" hidden>
+        <p class="hint" id="cma-summary"></p>
+
+        <h3>Action Valence</h3>
+        <p class="hint">Pearson correlation</p>
+        <div class="table-wrap"><div id="cma-action-pearson"></div></div>
+        <p class="hint">Spearman rank correlation</p>
+        <div class="table-wrap"><div id="cma-action-spearman"></div></div>
+
+        <h3>Consequence Valence</h3>
+        <p class="hint">Pearson correlation</p>
+        <div class="table-wrap"><div id="cma-consequence-pearson"></div></div>
+        <p class="hint">Spearman rank correlation</p>
+        <div class="table-wrap"><div id="cma-consequence-spearman"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="cross_model.js"></script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import time
 from openai import OpenAI, RateLimitError
 
 from app.config import DEEPSEEK_API_KEY
+from app.llm_logger import log_llm_call
 
 DEEPSEEK_ENDPOINT = "https://api.deepseek.com"
 
@@ -27,11 +28,15 @@ def ask_deepseek(prompt: str, model: str = "deepseek-v4-pro"):
                 temperature=0,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return response.choices[0].message.content
+            text = response.choices[0].message.content
+            log_llm_call("deepseek", model, prompt, status="success", response=text)
+            return text
 
         except RateLimitError as e:
             if "insufficient_quota" in str(e) or "credit_balance_exhausted" in str(e):
+                log_llm_call("deepseek", model, prompt, status="error", error=str(e))
                 raise RuntimeError(f"DeepSeek account is out of credits: {e}") from e
+            log_llm_call("deepseek", model, prompt, status="error", error=str(e))
             print(e)
             print("Rate limit reached. Waiting 15 seconds...")
             time.sleep(15)

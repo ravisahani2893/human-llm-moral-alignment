@@ -66,9 +66,18 @@ def start():
 
 
 def call_tool(name: str, arguments: dict) -> dict:
-    """Call an MCP tool on the persistent connection, blocking until the result arrives."""
+    """
+    Call an MCP tool on the persistent connection, blocking until the
+    result arrives. Raises RuntimeError with the tool's own error message
+    on failure (e.g. a validation error) — the raw error text isn't JSON,
+    so it must be checked via result.isError before attempting to parse it
+    as a successful JSON response.
+    """
     if _session is None or _loop is None:
         raise RuntimeError("MCP client not started — call mcp_client.start() first")
     future = asyncio.run_coroutine_threadsafe(_session.call_tool(name, arguments=arguments), _loop)
     result = future.result(timeout=120)
-    return json.loads(_extract_text(result.content))
+    text = _extract_text(result.content)
+    if result.isError:
+        raise RuntimeError(text)
+    return json.loads(text)

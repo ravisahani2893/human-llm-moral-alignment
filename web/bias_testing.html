@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bias Testing — Human vs LLM Moral Alignment</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>Human ↔ LLM Moral Alignment</h1>
+      <p class="subtitle">Score moral scenarios for Action and Consequence valence across one or more models.</p>
+    </header>
+
+    <nav class="site-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="single.html">Single Scenario</a>
+      <a href="dataset.html">Full Dataset</a>
+      <a href="export.html">Per-Model Export</a>
+      <a href="human_alignment.html">Human-LLM Alignment</a>
+      <a href="cross_model.html">Cross-Model Agreement</a>
+      <a href="bias_testing.html" class="active">Bias Testing</a>
+      <a href="agent.html">Agent</a>
+    </nav>
+
+    <section class="card">
+      <h2>Bias Testing — Demographic Variant Robustness</h2>
+      <p class="hint">
+        <strong>This is neither Human–LLM Alignment nor Cross-Model Agreement.</strong>
+        For a fixed set of moral scenarios, the same story is rewritten with different names
+        (e.g. Male/Female, or Indian/European/American), with everything else — the moral
+        content of the scenario — held constant. This checks whether <em>one model's own</em>
+        valence score for the <em>same</em> scenario shifts just because the demographic marker
+        changed, using a paired Wilcoxon signed-rank test. It never reads human annotations.
+      </p>
+
+      <label for="bias-model-select">Model</label>
+      <select id="bias-model-select"></select>
+
+      <label for="bias-dataset-select">Variant dataset</label>
+      <select id="bias-dataset-select"></select>
+
+      <div class="actions">
+        <button id="run-bias-eval-btn" class="btn primary">Run Bias Evaluation</button>
+        <span id="bias-eval-status" class="status"></span>
+      </div>
+
+      <div class="progress-wrap" id="bias-eval-progress-wrap" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="bias-eval-progress-fill"></div></div>
+        <div id="bias-eval-progress-label" class="progress-label"></div>
+      </div>
+
+      <div class="actions">
+        <button id="compute-bias-metrics-btn" class="btn secondary">Compute Bias Metrics</button>
+        <span id="bias-metrics-status" class="status"></span>
+      </div>
+      <p class="hint">
+        Requires a completed evaluation for this model/dataset (run above, or previously run).
+        A low p-value (&lt; 0.05) means the model's scores shifted systematically between the two
+        variants; a high p-value means no bias was detected at this sample size — not proof of
+        its absence, given these datasets are only a few dozen scenarios each.
+      </p>
+
+      <div id="bias-metrics-results" hidden>
+        <p class="hint" id="bias-metrics-summary"></p>
+        <div class="table-wrap"><div id="bias-metrics-table"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="bias_testing.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Human-LLM Alignment — Human vs LLM Moral Alignment</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>Human ↔ LLM Moral Alignment</h1>
+      <p class="subtitle">Score moral scenarios for Action and Consequence valence across one or more models.</p>
+    </header>
+
+    <nav class="site-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="single.html">Single Scenario</a>
+      <a href="dataset.html">Full Dataset</a>
+      <a href="export.html">Per-Model Export</a>
+      <a href="human_alignment.html" class="active">Human-LLM Alignment</a>
+      <a href="cross_model.html">Cross-Model Agreement</a>
+      <a href="bias_testing.html">Bias Testing</a>
+      <a href="agent.html">Agent</a>
+    </nav>
+
+    <section class="card">
+      <h2>Human-LLM Alignment — Human vs Model</h2>
+      <p class="hint">
+        <strong>This is NOT Cross-Model Agreement.</strong> It compares each selected model's
+        predictions against <em>your human annotations</em> (Human_Action / Human_Consequence) —
+        Lin's CCC (primary metric), plus MAE, RMSE, Pearson, and Spearman, computed independently
+        for Action and Consequence valence. For "how similarly do models score each other,"
+        use <a href="cross_model.html">Cross-Model Agreement</a> instead.
+      </p>
+
+      <label>Models to evaluate</label>
+      <div class="model-select" id="ham-model-select"></div>
+
+      <label for="ham-prompt-version-select">Prompt version</label>
+      <select id="ham-prompt-version-select"></select>
+      <p class="hint">Every selected model must already have a completed export for this prompt version.</p>
+
+      <div class="actions">
+        <button id="run-ham-btn" class="btn primary">Compute Human-LLM Alignment</button>
+        <span id="ham-status" class="status"></span>
+      </div>
+
+      <div id="ham-results" hidden>
+        <p class="hint" id="ham-summary"></p>
+
+        <h3>Action Valence</h3>
+        <div class="table-wrap"><div id="ham-action-table"></div></div>
+
+        <h3>Consequence Valence</h3>
+        <div class="table-wrap"><div id="ham-consequence-table"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="human_alignment.js"></script>
+</body>
+</html>

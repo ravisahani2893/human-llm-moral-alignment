@@ -44,19 +44,25 @@ def export_model_dataset(
         df = df.head(limit)
     total = len(df)
 
+    action_col = f"{model}_action"
+    consequences_col = f"{model}_consequences"
+
     rows: list[dict] = []
     done_ids: set = set()
     if resume and out_path.exists():
         existing = pd.read_csv(out_path)
-        rows = existing.to_dict(orient="records")
-        done_ids = set(existing["ID"].tolist())
-        print(f"[export] resuming {model!r}: {len(done_ids)} scenarios already done", file=sys.stderr)
+        failed_mask = existing[action_col].isna() | existing[consequences_col].isna()
+        completed = existing[~failed_mask]
+        rows = completed.to_dict(orient="records")
+        done_ids = set(completed["ID"].tolist())
+        print(
+            f"[export] resuming {model!r}: {len(done_ids)} scenarios already done, "
+            f"{int(failed_mask.sum())} previously failed will be retried",
+            file=sys.stderr,
+        )
 
     remaining = df[~df["ID"].isin(done_ids)]
     print(f"[export] model={model!r}, prompt_version={prompt_version!r}, total={total}, remaining={len(remaining)}", file=sys.stderr)
-
-    action_col = f"{model}_action"
-    consequences_col = f"{model}_consequences"
 
     for i, (_, row) in enumerate(remaining.iterrows(), start=1):
         try:

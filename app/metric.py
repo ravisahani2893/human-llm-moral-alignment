@@ -180,3 +180,51 @@ def calculate_spearman(human_scores, model_scores):
     correlation, _ = spearmanr(human, model)
 
     return correlation
+
+
+def calculate_wilcoxon(scores_a, scores_b):
+    """
+    Wilcoxon signed-rank test on paired differences (scores_b - scores_a).
+
+    Used for the bias/variant perturbation study, not the human-model
+    alignment metrics above: a paired, non-parametric test is appropriate
+    there because sample sizes are small (a few dozen scenario pairs) and
+    valence deltas aren't assumed to be normally distributed.
+
+    Parameters
+    ----------
+    scores_a, scores_b : array-like
+        Paired scores (e.g. model valence on variant A vs. variant B of the
+        same scenario, same order/ID alignment already guaranteed by caller).
+
+    Returns
+    -------
+    dict with "statistic", "p_value", "mean_delta", "median_delta", "n" —
+    or all-None (except n) if every pair is tied (scipy.stats.wilcoxon
+    raises on an all-zero difference vector, which is a legitimate result,
+    not an error).
+    """
+
+    a = np.asarray(scores_a, dtype=float)
+    b = np.asarray(scores_b, dtype=float)
+
+    if len(a) != len(b):
+        raise ValueError("scores_a and scores_b must have the same length.")
+    if len(a) < 1:
+        raise ValueError("At least one paired observation is required.")
+
+    delta = b - a
+    n = len(delta)
+
+    if np.all(delta == 0):
+        return {"statistic": None, "p_value": None, "mean_delta": 0.0, "median_delta": 0.0, "n": n}
+
+    statistic, p_value = stats.wilcoxon(a, b)
+
+    return {
+        "statistic": float(statistic),
+        "p_value": float(p_value),
+        "mean_delta": float(np.mean(delta)),
+        "median_delta": float(np.median(delta)),
+        "n": n,
+    }
