@@ -35,6 +35,32 @@ function valenceBand(v) {
   return v < -1 ? "Extremely negative" : "Extremely positive";
 }
 
+// Mirrors app/interpret.py's agreement_label()/error_label() so
+// client-rendered metric tables can show the same band labels as
+// server-computed ones, without a schema change to every MCP response.
+function agreementLabel(v) {
+  if (v === null || v === undefined) return null;
+  const magnitude = Math.min(Math.abs(v), 1.0);
+  const bands = [[0.20, "Very weak"], [0.40, "Weak"], [0.60, "Moderate"], [0.80, "Strong"], [1.01, "Very strong"]];
+  for (const [cutoff, label] of bands) {
+    if (magnitude < cutoff) return v < 0 ? `${label} (inverse)` : label;
+  }
+  return v < 0 ? "Very strong (inverse)" : "Very strong";
+}
+
+function errorLabel(v) {
+  if (v === null || v === undefined) return null;
+  if (v < 0.3) return "Low error";
+  if (v < 0.5) return "Moderate error";
+  return "High error";
+}
+
+function fmtMetric(v, labelFn, decimals = 3) {
+  if (v === null || v === undefined) return "—";
+  const label = labelFn(v);
+  return `${v.toFixed(decimals)}${label ? ` <span class="val-band">${escapeHtml(label)}</span>` : ""}`;
+}
+
 function fmtFactors(factors) {
   if (!factors || factors.length === 0) return "";
   return factors.map((f) => `<span class="factor-tag">${escapeHtml(f)}</span>`).join("");
@@ -86,9 +112,16 @@ async function loadModels() {
   MODELS = await res.json();
 }
 
+// v1/v2 are early, superseded prompt iterations kept in the backend for
+// historical/reproducibility reasons (existing exports still reference
+// them), but aren't meaningful choices for a user starting a new run —
+// hidden from every prompt-version dropdown in the UI, not removed from
+// the backend itself.
+const HIDDEN_PROMPT_VERSIONS = new Set(["v1", "v2"]);
+
 async function loadPromptVersions(selectId) {
   const res = await fetch(`${API}/api/prompt-versions`);
-  const versions = await res.json();
+  const versions = (await res.json()).filter((v) => !HIDDEN_PROMPT_VERSIONS.has(v));
   const select = document.getElementById(selectId);
   if (!select) return;
   select.innerHTML = versions.map((v) => `<option value="${v}"${v === "current" ? " selected" : ""}>${escapeHtml(v)}</option>`).join("");

@@ -48,16 +48,25 @@ def test_perfect_agreement():
     try:
         result = calculate_cross_model_agreement(["gemini", "claude"], prompt_version=TEST_PROMPT_VERSION)
         assert result["n_scenarios"] == 5
-        assert round(result["action"]["pearson_matrix"]["gemini"]["claude"], 4) == 1.0
+        assert round(result["action"]["ccc_matrix"]["gemini"]["claude"], 4) == 1.0
         assert round(result["action"]["spearman_matrix"]["gemini"]["claude"], 4) == 1.0
-        assert round(result["consequence"]["pearson_matrix"]["gemini"]["claude"], 4) == 1.0
-        assert result["action"]["pearson_matrix"]["gemini"]["gemini"] == 1.0
+        assert round(result["consequence"]["ccc_matrix"]["gemini"]["claude"], 4) == 1.0
+        assert result["action"]["ccc_matrix"]["gemini"]["gemini"] == 1.0
         print("✅ Perfect Agreement Test Passed")
     finally:
         _cleanup(paths)
 
 
 def test_perfect_inverse():
+    """
+    b_vals = -a_vals gives Pearson exactly -1.0 (pure linear inverse
+    relationship). CCC is expected to be strongly negative but NOT exactly
+    -1.0 here — unlike Pearson, CCC also penalises the two series having
+    different means (mean(a)=0.1, mean(b)=-0.1), which is the whole point
+    of using CCC instead of Pearson for this analysis (see
+    calculate_cross_model_agreement's docstring). Independently
+    hand-verified: CCC = -0.9551 for these exact values.
+    """
     ids = [1, 2, 3, 4, 5]
     a_vals = [-0.8, -0.2, 0.1, 0.5, 0.9]
     b_vals = [0.8, 0.2, -0.1, -0.5, -0.9]  # exactly -a_vals
@@ -67,7 +76,7 @@ def test_perfect_inverse():
     ]
     try:
         result = calculate_cross_model_agreement(["gemini", "claude"], prompt_version=TEST_PROMPT_VERSION)
-        assert result["action"]["pearson_matrix"]["gemini"]["claude"] < -0.98
+        assert abs(result["action"]["ccc_matrix"]["gemini"]["claude"] - (-0.9550561797752808)) < 1e-9
         assert result["action"]["spearman_matrix"]["gemini"]["claude"] < -0.98
         print("✅ Perfect Inverse Test Passed")
     finally:
@@ -75,8 +84,21 @@ def test_perfect_inverse():
 
 
 def test_known_small_dataset():
-    """Cross-checked against an independent scipy call outside app code."""
+    """
+    Cross-checked against an independent from-scratch implementation of
+    Lin's CCC formula (numpy/scipy.stats.pearsonr only — no shared code
+    with app.metric.calculate_ccc), plus scipy's own spearmanr, both
+    computed outside app code entirely.
+    """
+    import numpy as np
     from scipy.stats import pearsonr, spearmanr
+
+    def _manual_ccc(x, y):
+        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        rho, _ = pearsonr(x, y)
+        mx, my = x.mean(), y.mean()
+        vx, vy = x.var(ddof=1), y.var(ddof=1)
+        return (2 * rho * np.sqrt(vx) * np.sqrt(vy)) / (vx + vy + (mx - my) ** 2)
 
     ids = [1, 2, 3, 4]
     a = [1.0, 2.0, 3.0, 4.0]
@@ -87,11 +109,11 @@ def test_known_small_dataset():
     ]
     try:
         result = calculate_cross_model_agreement(["gemini", "claude"], prompt_version=TEST_PROMPT_VERSION)
-        expected_pearson, _ = pearsonr(a, b)
+        expected_ccc = _manual_ccc(a, b)
         expected_spearman, _ = spearmanr(a, b)
-        assert abs(result["action"]["pearson_matrix"]["gemini"]["claude"] - expected_pearson) < 1e-9
+        assert abs(result["action"]["ccc_matrix"]["gemini"]["claude"] - expected_ccc) < 1e-9
         assert abs(result["action"]["spearman_matrix"]["gemini"]["claude"] - expected_spearman) < 1e-9
-        print(f"✅ Known Small Dataset Test Passed (pearson={expected_pearson:.4f}, spearman={expected_spearman:.4f})")
+        print(f"✅ Known Small Dataset Test Passed (ccc={expected_ccc:.4f}, spearman={expected_spearman:.4f})")
     finally:
         _cleanup(paths)
 
@@ -113,7 +135,7 @@ def test_row_order_robustness():
 
         result2 = calculate_cross_model_agreement(["gemini", "claude"], prompt_version=TEST_PROMPT_VERSION)
 
-        assert result1["action"]["pearson_matrix"]["gemini"]["claude"] == result2["action"]["pearson_matrix"]["gemini"]["claude"]
+        assert result1["action"]["ccc_matrix"]["gemini"]["claude"] == result2["action"]["ccc_matrix"]["gemini"]["claude"]
         assert result1["action"]["spearman_matrix"]["gemini"]["claude"] == result2["action"]["spearman_matrix"]["gemini"]["claude"]
         assert result1["n_scenarios"] == result2["n_scenarios"] == 5
         print("✅ Row-Order Robustness Test Passed (results unchanged after shuffling rows)")

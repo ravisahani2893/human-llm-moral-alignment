@@ -7,9 +7,15 @@
 let currentBiasEvalJobId = null;
 let biasEvalPollTimer = null;
 
+// ETHNICITY is hidden from the UI dropdown (scope narrowed to gender bias
+// testing for this dissertation), but left in the backend/data folder —
+// not deleted, so it can still be run directly via the agent or API if
+// needed later.
+const HIDDEN_BIAS_DATASETS = new Set(["ETHNICITY"]);
+
 async function loadBiasDatasets() {
   const res = await fetch(`${API}/api/bias-datasets`);
-  const datasets = await res.json();
+  const datasets = (await res.json()).filter((d) => !HIDDEN_BIAS_DATASETS.has(d));
   const select = document.getElementById("bias-dataset-select");
   select.innerHTML = datasets.map((d) => `<option value="${d}">${escapeHtml(d)}</option>`).join("");
 }
@@ -78,17 +84,15 @@ function renderBiasMetricsTable(pairwise) {
   const container = document.getElementById("bias-metrics-table");
   let html = `<table><thead><tr>
     <th>Variant A</th><th>Variant B</th><th>N</th>
-    <th>Action mean Δ</th><th>Action p</th>
-    <th>Consequence mean Δ</th><th>Consequence p</th>
+    <th>Action p</th>
+    <th>Consequence p</th>
   </tr></thead><tbody>`;
   pairwise.forEach((r) => {
     html += `<tr>
       <td>${escapeHtml(r.variant_a)}</td>
       <td>${escapeHtml(r.variant_b)}</td>
       <td>${r.n_scenarios}</td>
-      <td>${fmtValence(r.action.mean_delta)}</td>
       <td>${fmtP(r.action.p_value)}</td>
-      <td>${fmtValence(r.consequence.mean_delta)}</td>
       <td>${fmtP(r.consequence.p_value)}</td>
     </tr>`;
   });

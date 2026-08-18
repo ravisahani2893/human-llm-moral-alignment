@@ -8,6 +8,7 @@ from app.jobs import OUTPUT_DIR, get_job, list_jobs, start_job
 from app.export_jobs import get_export_job, list_export_jobs, start_export_job
 from app.bias_jobs import get_bias_eval_job, list_bias_eval_jobs, start_bias_eval_job
 from app.models import (
+    ActionConsequenceDivergenceReport,
     BiasEvalJobSnapshot,
     CrossModelAgreementReport,
     ExportJobSnapshot,
@@ -28,6 +29,7 @@ from app.evaluator import (
     evaluate_random,
     evaluate_dataset as evaluate_complete_dataset,
 )
+from tools.find_action_consequence_divergence import find_divergence_report
 
 mcp = FastMCP("Human LLM Moral Alignment")
 
@@ -196,10 +198,14 @@ async def compute_cross_model_agreement(
     one model's predictions) and never reads Human_Action/Human_Consequence
     or any other human-annotated column.
 
-    Computes pairwise Pearson and Spearman correlation between every pair
-    of the given models, for action valence and consequence valence
-    separately, and assembles four symmetric matrices (action/consequence
-    x pearson/spearman, diagonal 1.0) plus a flat pairwise list. Reads each
+    Computes pairwise Lin's Concordance Correlation Coefficient (CCC) and
+    Spearman correlation between every pair of the given models, for
+    action valence and consequence valence separately, and assembles four
+    symmetric matrices (action/consequence x ccc/spearman, diagonal 1.0)
+    plus a flat pairwise list. CCC (not Pearson) is used so this result is
+    directly comparable to compute_alignment_metrics, which also uses CCC
+    as its primary metric — Pearson alone would miss two models that rank
+    scenarios the same way but score them on different scales. Reads each
     model's raw export CSV (produced by start_dataset_export) and merges
     them across ALL selected models by scenario ID (never positional
     order); any scenario missing a prediction from any selected model is
@@ -279,13 +285,17 @@ async def list_recent_bias_evals(ctx: Context = None) -> list[BiasEvalJobSnapsho
 async def compute_variant_bias(model: str, dataset: str, ctx: Context = None) -> VariantBiasReport:
     """
     Compute demographic bias/robustness results for one model on one
-    perturbation dataset: for every unique pair of variants (e.g. Male vs
-    Female, or Original vs Indian), runs a paired Wilcoxon signed-rank
-    test on the model's own action/consequence valence scores across the
-    two variants of each scenario, merged by scenario ID (never
-    positional order). Never reads human annotations — this measures
-    whether the MODEL's own output shifts with demographics, not whether
-    it matches a human judgment.
+    perturbation dataset: for every unique pair of DEMOGRAPHIC variants
+    (e.g. Male vs Female, or Indian vs European) — "Original" is
+    intentionally excluded, since it's the scenario's unmodified baseline
+    wording rather than a demographic variant itself, so a "vs Original"
+    comparison doesn't answer a bias question the way a demographic-vs-
+    demographic one does — runs a paired Wilcoxon signed-rank test on the
+    model's own action/consequence valence scores across the two variants
+    of each scenario, merged by scenario ID (never positional order).
+    Never reads human annotations — this measures whether the MODEL's own
+    output shifts with demographics, not whether it matches a human
+    judgment.
 
     Requires start_bias_variant_eval to have completed for this
     model/dataset first (reads outputs/bias_<dataset>_<model>.csv).
@@ -299,6 +309,43 @@ async def compute_variant_bias(model: str, dataset: str, ctx: Context = None) ->
     await ctx.info(f"compute_variant_bias called with model={model!r}, dataset={dataset!r}")
     report = calculate_all_variant_bias(model=model, dataset=dataset)
     return VariantBiasReport(**report)
+
+
+@mcp.tool()
+async def find_action_consequence_divergence(
+    prompt_version: str = "current",
+    top_n: int = 20,
+    ctx: Context = None,
+) -> ActionConsequenceDivergenceReport:
+    """
+    Finds scenarios where all 5 models agree on the SIGN of Action Valence
+    (all judge the action positively, or all judge it negatively) but
+    disagree in sign on Consequence Valence (at least one model diverges
+    in direction on whether the outcome was good or bad) — the "models
+    condemn/praise the act identically but split on its outcome" pattern.
+    A cross-model pattern only, like compute_cross_model_agreement — never
+    reads or uses human annotations.
+
+    Reads each model's raw export CSV (produced by start_dataset_export,
+    same files compute_alignment_metrics and compute_cross_model_agreement
+    read) and merges them by scenario ID (never positional order). Returns
+    the total number of scenarios examined, how many exhibit the
+    divergence pattern, what fraction that is, and up to top_n of the
+    qualifying scenarios in full detail (scenario text plus every model's
+    individual Action and Consequence Valence score), sorted by how large
+    the gap is between action agreement and consequence disagreement —
+    largest gap (most striking divergence) first. Set top_n higher to see
+    more of the qualifying scenarios; the full set's size is always
+    reported via n_divergent even if top_n truncates the detailed list.
+
+    prompt_version selects which export to read for every model (an
+    export must already exist for each model at this prompt_version —
+    see start_dataset_export / list_recent_exports); typically "current"
+    or "few_shot".
+    """
+    await ctx.info(f"find_action_consequence_divergence called with prompt_version={prompt_version!r}, top_n={top_n}")
+    report = find_divergence_report(prompt_version=prompt_version, top_n=top_n)
+    return ActionConsequenceDivergenceReport(**report)
 
 
 @mcp.tool()

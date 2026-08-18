@@ -25,16 +25,16 @@ class ModelAlignmentReport(BaseModel):
 
 
 class CrossModelAxisResult(BaseModel):
-    pearson_matrix: dict[str, dict[str, float | None]]
+    ccc_matrix: dict[str, dict[str, float | None]]
     spearman_matrix: dict[str, dict[str, float | None]]
 
 
 class CrossModelPairwiseResult(BaseModel):
     model_a: str
     model_b: str
-    action_pearson: float | None = None
+    action_ccc: float | None = None
     action_spearman: float | None = None
-    consequence_pearson: float | None = None
+    consequence_ccc: float | None = None
     consequence_spearman: float | None = None
 
 
@@ -97,6 +97,33 @@ class BiasEvalJobSnapshot(BaseModel):
     created_at: float
     updated_at: float = 0.0
     csv_path: str
+
+
+class DivergenceScenarioResult(BaseModel):
+    id: int
+    scenario: str
+    action_std: float
+    consequence_std: float
+    divergence_gap: float
+    per_model: dict[str, dict[str, float]]
+
+
+class ActionConsequenceDivergenceReport(BaseModel):
+    """
+    Scenarios where all models agree on Action Valence's sign but disagree
+    (mixed sign) on Consequence Valence — see
+    tools.find_action_consequence_divergence for the full explanation.
+    Never reads human annotations; purely a cross-model pattern, like
+    CrossModelAgreementReport, but at the level of individual scenarios
+    rather than an aggregate correlation.
+    """
+    analysis: str
+    prompt_version: str
+    models: list[str]
+    n_scenarios_total: int
+    n_divergent: int
+    divergent_fraction: float
+    results: list[DivergenceScenarioResult]
 
 
 class ModelInformation(BaseModel):

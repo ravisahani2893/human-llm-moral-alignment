@@ -275,9 +275,15 @@ def calculate_cross_model_agreement(models: list[str] | None = None, prompt_vers
     Returns
     -------
     dict with keys: analysis, prompt_version, models, n_scenarios,
-    action (pearson_matrix, spearman_matrix), consequence (same), and
+    action (ccc_matrix, spearman_matrix), consequence (same), and
     pairwise (flat list of per-pair records) — see module docs for the
-    exact shape.
+    exact shape. ccc_matrix uses Lin's Concordance Correlation Coefficient
+    rather than Pearson, for the same reason it's the primary metric in
+    evaluate_alignment(): unlike Pearson, CCC penalises two models whose
+    scores are correlated but systematically offset in scale/location,
+    not just uncorrelated ones — the same standard used to judge
+    human-model alignment elsewhere in this project, so the two analyses
+    are now directly, fairly comparable on the same metric.
 
     Raises
     ------
@@ -348,20 +354,20 @@ def calculate_cross_model_agreement(models: list[str] | None = None, prompt_vers
         )
 
     def _matrices(col_map: dict[str, str]) -> tuple[dict, dict]:
-        pearson_matrix = {m: {m2: (1.0 if m2 == m else None) for m2 in models} for m in models}
+        ccc_matrix = {m: {m2: (1.0 if m2 == m else None) for m2 in models} for m in models}
         spearman_matrix = {m: {m2: (1.0 if m2 == m else None) for m2 in models} for m in models}
         for i, m_a in enumerate(models):
             for m_b in models[i + 1:]:
                 a_vals = merged[col_map[m_a]].tolist()
                 b_vals = merged[col_map[m_b]].tolist()
-                p = calculate_pearson(a_vals, b_vals)
+                c = calculate_ccc(a_vals, b_vals)
                 s = calculate_spearman(a_vals, b_vals)
-                pearson_matrix[m_a][m_b] = pearson_matrix[m_b][m_a] = p
+                ccc_matrix[m_a][m_b] = ccc_matrix[m_b][m_a] = c
                 spearman_matrix[m_a][m_b] = spearman_matrix[m_b][m_a] = s
-        return pearson_matrix, spearman_matrix
+        return ccc_matrix, spearman_matrix
 
-    action_pearson, action_spearman = _matrices(action_col)
-    consequence_pearson, consequence_spearman = _matrices(consequence_col)
+    action_ccc, action_spearman = _matrices(action_col)
+    consequence_ccc, consequence_spearman = _matrices(consequence_col)
 
     pairwise = []
     for i, m_a in enumerate(models):
@@ -369,9 +375,9 @@ def calculate_cross_model_agreement(models: list[str] | None = None, prompt_vers
             pairwise.append({
                 "model_a": m_a,
                 "model_b": m_b,
-                "action_pearson": action_pearson[m_a][m_b],
+                "action_ccc": action_ccc[m_a][m_b],
                 "action_spearman": action_spearman[m_a][m_b],
-                "consequence_pearson": consequence_pearson[m_a][m_b],
+                "consequence_ccc": consequence_ccc[m_a][m_b],
                 "consequence_spearman": consequence_spearman[m_a][m_b],
             })
 
@@ -380,8 +386,8 @@ def calculate_cross_model_agreement(models: list[str] | None = None, prompt_vers
         "prompt_version": prompt_version,
         "models": models,
         "n_scenarios": n_scenarios,
-        "action": {"pearson_matrix": action_pearson, "spearman_matrix": action_spearman},
-        "consequence": {"pearson_matrix": consequence_pearson, "spearman_matrix": consequence_spearman},
+        "action": {"ccc_matrix": action_ccc, "spearman_matrix": action_spearman},
+        "consequence": {"ccc_matrix": consequence_ccc, "spearman_matrix": consequence_spearman},
         "pairwise": pairwise,
     }
 
@@ -456,13 +462,20 @@ def calculate_variant_bias(model: str, dataset: str, variant_a: str, variant_b: 
 
 def calculate_all_variant_bias(model: str, dataset: str) -> dict:
     """
-    Runs calculate_variant_bias for every unique pair of variants present
-    in outputs/bias_<dataset>_<model>.csv (e.g. Male/Female/Original for
-    GENDER, or Original/Indian/European/American for ETHNICITY) and
-    assembles the pairwise results into one report — the bias-testing
+    Runs calculate_variant_bias for every unique pair of DEMOGRAPHIC
+    variants present in outputs/bias_<dataset>_<model>.csv (e.g. Male vs
+    Female for GENDER, or Indian/European/American pairs for ETHNICITY)
+    and assembles the pairwise results into one report — the bias-testing
     analogue of calculate_cross_model_agreement's pairwise list, same
     "discover pairs, reuse the single-pair function, never duplicate the
     math" shape.
+
+    "Original" is intentionally excluded from pairwise comparison: it is
+    the scenario's unmodified baseline wording, not itself a demographic
+    variant, so a "vs Original" comparison doesn't answer a bias question
+    the way a demographic-vs-demographic comparison does (e.g. Male vs
+    Female). Only comparisons between two actual demographic variants are
+    reported.
     """
     from tools.bias_variant_eval import bias_output_path
 
@@ -475,9 +488,12 @@ def calculate_all_variant_bias(model: str, dataset: str) -> dict:
             f"Run start_bias_variant_eval for model={model!r}, dataset={dataset!r} first."
         )
 
-    variants = sorted(df["variant"].unique().tolist())
+    variants = sorted(v for v in df["variant"].unique().tolist() if v != "Original")
     if len(variants) < 2:
-        raise ValueError(f"Need at least 2 variants to compare, found {variants!r} in {output_file}")
+        raise ValueError(
+            f"Need at least 2 demographic variants (excluding 'Original') to compare, "
+            f"found {variants!r} in {output_file}"
+        )
 
     pairwise = []
     for i, variant_a in enumerate(variants):

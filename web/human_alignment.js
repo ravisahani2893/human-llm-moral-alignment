@@ -15,11 +15,11 @@ function renderAlignmentTable(containerId, results, axisKey) {
     html += `<tr>
       <td>${escapeHtml(modelLabel(r.model))}</td>
       <td>${r.n_scenarios}</td>
-      <td>${fmtValence(axis.ccc)}</td>
-      <td>${fmtValence(axis.pearson)}</td>
-      <td>${fmtValence(axis.spearman)}</td>
-      <td>${axis.mae === null || axis.mae === undefined ? "—" : axis.mae.toFixed(3)}</td>
-      <td>${axis.rmse === null || axis.rmse === undefined ? "—" : axis.rmse.toFixed(3)}</td>
+      <td>${fmtMetric(axis.ccc, agreementLabel)}</td>
+      <td>${fmtMetric(axis.pearson, agreementLabel)}</td>
+      <td>${fmtMetric(axis.spearman, agreementLabel)}</td>
+      <td>${fmtMetric(axis.mae, errorLabel)}</td>
+      <td>${fmtMetric(axis.rmse, errorLabel)}</td>
     </tr>`;
   });
   html += `</tbody></table>`;

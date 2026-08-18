@@ -11,7 +11,7 @@ function renderMatrix(containerId, models, matrix) {
     html += `<tr><th>${escapeHtml(modelLabel(rowModel))}</th>`;
     models.forEach((colModel) => {
       const v = matrix[rowModel][colModel];
-      html += `<td>${fmtValence(v === null || v === undefined ? null : v)}</td>`;
+      html += `<td>${fmtMetric(v, agreementLabel)}</td>`;
     });
     html += `</tr>`;
   });
@@ -48,9 +48,9 @@ async function runCrossModelAgreement() {
       `Models: ${data.models.map(modelLabel).join(", ")} · Prompt version: ${data.prompt_version} · ` +
       `Common scenarios (present in ALL selected models' predictions): ${data.n_scenarios}`;
 
-    renderMatrix("cma-action-pearson", data.models, data.action.pearson_matrix);
+    renderMatrix("cma-action-ccc", data.models, data.action.ccc_matrix);
     renderMatrix("cma-action-spearman", data.models, data.action.spearman_matrix);
-    renderMatrix("cma-consequence-pearson", data.models, data.consequence.pearson_matrix);
+    renderMatrix("cma-consequence-ccc", data.models, data.consequence.ccc_matrix);
     renderMatrix("cma-consequence-spearman", data.models, data.consequence.spearman_matrix);
 
     document.getElementById("cma-results").hidden = false;
