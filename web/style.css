@@ -1,14 +1,16 @@
 :root {
-  --bg: #0f1115;
-  --surface: #171a21;
-  --surface-2: #1f232c;
-  --border: #2a2f3a;
-  --text: #e7e9ee;
-  --text-dim: #9aa1ad;
-  --accent: #6c8cff;
-  --accent-dim: #3f4d80;
-  --good: #3ecf8e;
-  --bad: #ef5b6b;
+  --bg: #ffffff;
+  --surface: #f6f7f9;
+  --surface-2: #edeff3;
+  --border: #dde1e8;
+  --text: #14171f;
+  --text-dim: #5b6270;
+  --accent: #3b5bdb;
+  --accent-dim: #dbe4ff;
+  --accent-2: #0d9488;
+  --accent-2-dim: #ccfbf1;
+  --good: #1a8f57;
+  --bad: #d1293d;
   --radius: 10px;
 }
 
@@ -159,13 +161,13 @@ textarea:focus, input:focus {
 
 .btn.primary {
   background: var(--accent);
-  color: #0b0d12;
+  color: #ffffff;
 }
 
 .btn.secondary {
-  background: var(--surface-2);
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: var(--accent-2-dim);
+  color: var(--accent-2);
+  border: 1px solid var(--accent-2);
 }
 
 .btn:disabled {
@@ -259,9 +261,15 @@ td.scenario-cell {
 .val-err { color: var(--bad); font-style: italic; }
 
 .val-band {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--text-dim);
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border-radius: 999px;
+  background: var(--accent-2-dim);
+  color: var(--accent-2);
 }
 
 td.reasoning-cell {

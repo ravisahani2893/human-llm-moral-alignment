@@ -2,7 +2,7 @@
 // or requests human annotation values; this page is deliberately kept
 // separate from the Human-LLM Alignment story told elsewhere in the app.
 
-function renderMatrix(containerId, models, matrix) {
+function renderMatrix(containerId, models, matrix, showLabel = false) {
   const container = document.getElementById(containerId);
   let html = `<table><thead><tr><th></th>`;
   models.forEach((m) => (html += `<th>${escapeHtml(modelLabel(m))}</th>`));
@@ -11,7 +11,7 @@ function renderMatrix(containerId, models, matrix) {
     html += `<tr><th>${escapeHtml(modelLabel(rowModel))}</th>`;
     models.forEach((colModel) => {
       const v = matrix[rowModel][colModel];
-      html += `<td>${fmtMetric(v, agreementLabel)}</td>`;
+      html += `<td>${showLabel ? fmtMetric(v, agreementLabel) : fmtValence(v)}</td>`;
     });
     html += `</tr>`;
   });
@@ -48,10 +48,8 @@ async function runCrossModelAgreement() {
       `Models: ${data.models.map(modelLabel).join(", ")} · Prompt version: ${data.prompt_version} · ` +
       `Common scenarios (present in ALL selected models' predictions): ${data.n_scenarios}`;
 
-    renderMatrix("cma-action-ccc", data.models, data.action.ccc_matrix);
-    renderMatrix("cma-action-spearman", data.models, data.action.spearman_matrix);
-    renderMatrix("cma-consequence-ccc", data.models, data.consequence.ccc_matrix);
-    renderMatrix("cma-consequence-spearman", data.models, data.consequence.spearman_matrix);
+    renderMatrix("cma-action-ccc", data.models, data.action.ccc_matrix, true);
+    renderMatrix("cma-consequence-ccc", data.models, data.consequence.ccc_matrix, true);
 
     document.getElementById("cma-results").hidden = false;
     setStatus("cma-status", "Done.", "ok");

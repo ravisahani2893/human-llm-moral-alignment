@@ -31,28 +31,37 @@ _AGREEMENT_BANDS = [
     (0.20, "Very weak"),
     (0.40, "Weak"),
     (0.60, "Moderate"),
+    (0.70, "Moderately Strong"),
     (0.80, "Strong"),
-    (1.01, "Very strong"),
 ]
 
 
 def agreement_label(value: float | None) -> str | None:
     """
-    Map a correlation-type coefficient (CCC, Pearson, or Spearman — all
-    range roughly -1..+1) to a human-readable strength-of-agreement band,
-    using a standard general-purpose correlation-strength convention
-    (commonly cited thresholds of 0.2/0.4/0.6/0.8 for very weak/weak/
-    moderate/strong/very strong). This is a general interpretive
-    convention, not a metric-specific or domain-validated threshold —
-    label it as such wherever it's shown.
+    Map a CCC (or Pearson/Spearman, shown alongside CCC in the same
+    tables) value to a human-readable strength-of-agreement band:
+
+        CCC < 0            No agreement
+        0.00 <= CCC < 0.20  Very weak
+        0.20 <= CCC < 0.40  Weak
+        0.40 <= CCC < 0.60  Moderate
+        0.60 <= CCC < 0.70  Moderately Strong
+        0.70 <= CCC < 0.80  Strong
+        CCC >= 0.80         Very Strong
+
+    A negative value is labelled "No agreement" outright rather than
+    banded by magnitude — for an agreement coefficient, the sign itself
+    (systematic disagreement vs. no relationship) matters more than how
+    negative it is.
     """
     if value is None:
         return None
-    magnitude = min(abs(value), 1.0)
+    if value < 0:
+        return "No agreement"
     for cutoff, label in _AGREEMENT_BANDS:
-        if magnitude < cutoff:
-            return f"{label} (inverse)" if value < 0 else label
-    return "Very strong (inverse)" if value < 0 else "Very strong"
+        if value < cutoff:
+            return label
+    return "Very Strong"
 
 
 def error_label(value: float | None) -> str | None:

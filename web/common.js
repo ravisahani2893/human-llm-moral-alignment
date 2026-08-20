@@ -40,12 +40,12 @@ function valenceBand(v) {
 // server-computed ones, without a schema change to every MCP response.
 function agreementLabel(v) {
   if (v === null || v === undefined) return null;
-  const magnitude = Math.min(Math.abs(v), 1.0);
-  const bands = [[0.20, "Very weak"], [0.40, "Weak"], [0.60, "Moderate"], [0.80, "Strong"], [1.01, "Very strong"]];
+  if (v < 0) return "No agreement";
+  const bands = [[0.20, "Very weak"], [0.40, "Weak"], [0.60, "Moderate"], [0.70, "Moderately Strong"], [0.80, "Strong"]];
   for (const [cutoff, label] of bands) {
-    if (magnitude < cutoff) return v < 0 ? `${label} (inverse)` : label;
+    if (v < cutoff) return label;
   }
-  return v < 0 ? "Very strong (inverse)" : "Very strong";
+  return "Very Strong";
 }
 
 function errorLabel(v) {

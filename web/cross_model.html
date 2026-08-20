@@ -52,16 +52,12 @@
         <h3>Action Valence</h3>
         <p class="hint">Lin's Concordance Correlation Coefficient (CCC) — how closely two models' scores match in value, not just in ranking. Same metric used as the primary score in Human-LLM Alignment, so the two are directly comparable.</p>
         <div class="table-wrap"><div id="cma-action-ccc"></div></div>
-        <p class="hint">Spearman rank correlation — do the two models rank scenarios in the same order, regardless of scale?</p>
-        <div class="table-wrap"><div id="cma-action-spearman"></div></div>
 
         <h3>Consequence Valence</h3>
         <p class="hint">Lin's Concordance Correlation Coefficient (CCC)</p>
         <div class="table-wrap"><div id="cma-consequence-ccc"></div></div>
-        <p class="hint">Spearman rank correlation</p>
-        <div class="table-wrap"><div id="cma-consequence-spearman"></div></div>
 
-        <p class="hint">Band labels (Very weak / Weak / Moderate / Strong / Very strong) follow a standard general-purpose correlation-strength convention (0.2/0.4/0.6/0.8 cutoffs) — a common interpretive guide, not a metric-specific validated threshold.</p>
+        <p class="hint">Band labels: CCC &lt; 0 No agreement · 0.00–0.20 Very weak · 0.20–0.40 Weak · 0.40–0.60 Moderate · 0.60–0.70 Moderately Strong · 0.70–0.80 Strong · ≥0.80 Very Strong.</p>
       </div>
     </section>
   </div>
